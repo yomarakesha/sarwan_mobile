@@ -9,6 +9,7 @@ import {
     Text,
     View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Button from '../../components/Button';
 import EmptyState from '../../components/EmptyState';
 import WarehouseActionCard from '../../components/WarehouseActionCard';
@@ -24,6 +25,7 @@ export default function WarehouseScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [selectedAction, setSelectedAction] = useState<WarehouseAction | null>(null);
     const [detailVisible, setDetailVisible] = useState(false);
+    const insets = useSafeAreaInsets();
 
     const onRefresh = useCallback(() => {
         setRefreshing(true);
@@ -40,7 +42,7 @@ export default function WarehouseScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
             <ScrollView
                 style={styles.scroll}
                 showsVerticalScrollIndicator={false}

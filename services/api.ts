@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 /**
@@ -7,10 +8,19 @@ import { Platform } from 'react-native';
  * iOS simulator and web use localhost directly.
  */
 const getBaseUrl = (): string => {
-    if (Platform.OS === 'android') {
-        return 'http://10.0.2.2:5000/api/admin';
+    // Use physical device LAN IP if running via Expo Go
+    const debuggerHost = Constants.expoConfig?.hostUri;
+
+    if (debuggerHost) {
+        const localIp = debuggerHost.split(':')[0];
+        const url = `http://${localIp}:5000/api/admin`;
+        console.log('[API] Using LAN IP derived from Expo:', url);
+        return url;
     }
-    return 'http://localhost:5000/api/admin';
+
+    const fallbackUrl = Platform.OS === 'android' ? 'http://10.0.2.2:5000/api/admin' : 'http://localhost:5000/api/admin';
+    console.log('[API] Using fallback URL:', fallbackUrl);
+    return fallbackUrl;
 };
 
 export const BASE_URL = getBaseUrl();

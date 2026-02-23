@@ -9,6 +9,7 @@ import {
   Text,
   View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Button from '../../components/Button';
 import EmptyState from '../../components/EmptyState';
 import OrderCard from '../../components/OrderCard';
@@ -22,6 +23,7 @@ export default function OrdersScreen() {
   const router = useRouter();
   const { username } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -34,7 +36,7 @@ export default function OrdersScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator={false}

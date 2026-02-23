@@ -10,6 +10,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Card from '../../components/Card';
 import Colors from '../../constants/Colors';
 import Typography from '../../constants/Typography';
@@ -18,6 +19,7 @@ import { useAuth } from '../../contexts/AuthContext';
 export default function SettingsScreen() {
     const router = useRouter();
     const { logout, isLoading, username } = useAuth();
+    const insets = useSafeAreaInsets();
 
     const displayName = username || 'Пользователь';
 
@@ -34,7 +36,7 @@ export default function SettingsScreen() {
     ];
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
             <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
                 {/* Header */}
                 <View style={styles.header}>
