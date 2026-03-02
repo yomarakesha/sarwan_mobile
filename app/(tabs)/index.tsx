@@ -21,7 +21,7 @@ import { orders, ordersStats } from '../../data/mockData';
 
 export default function OrdersScreen() {
   const router = useRouter();
-  const { username } = useAuth();
+  const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const insets = useSafeAreaInsets();
 
@@ -51,7 +51,7 @@ export default function OrdersScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.userName}>{username || 'Пользователь'}</Text>
+          <Text style={styles.userName}>{user?.full_name || user?.username || 'Пользователь'}</Text>
           <Text style={styles.dateText}>{new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</Text>
         </View>
 

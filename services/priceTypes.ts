@@ -2,21 +2,21 @@ import { PriceType } from '../types/models';
 import api from './api';
 
 export const priceTypesService = {
-    /** GET /price-types */
-    getAll: () => api.get<PriceType[]>('/price-types'),
+    /** GET /admin/price-types */
+    getAll: () => api.get<PriceType[]>('/admin/price-types'),
 
-    /** POST /price-types */
-    add: (name: string) => api.post<PriceType>('/price-types', { name }),
+    /** POST /admin/price-types */
+    add: (name: string) => api.post<PriceType>('/admin/price-types', { name }),
 
-    /** PUT /price-types/:id */
+    /** PUT /admin/price-types/:id */
     update: (id: number, name: string) =>
-        api.put<PriceType>(`/price-types/${id}`, { name }),
+        api.put<PriceType>(`/admin/price-types/${id}`, { name }),
 
-    /** PATCH /price-types/:id/block */
-    block: (id: number) => api.patch<PriceType>(`/price-types/${id}/block`),
+    /** PATCH /admin/price-types/:id/block */
+    block: (id: number) => api.patch<PriceType>(`/admin/price-types/${id}/block`),
 
-    /** PATCH /price-types/:id/unblock */
-    unblock: (id: number) => api.patch<PriceType>(`/price-types/${id}/unblock`),
+    /** PATCH /admin/price-types/:id/unblock */
+    unblock: (id: number) => api.patch<PriceType>(`/admin/price-types/${id}/unblock`),
 };
 
 export default priceTypesService;

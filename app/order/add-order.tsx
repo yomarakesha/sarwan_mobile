@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
+    ActivityIndicator,
     SafeAreaView,
     ScrollView,
     StyleSheet,
@@ -18,9 +19,15 @@ import SelectModal from '../../components/SelectModal';
 import Colors from '../../constants/Colors';
 import Typography from '../../constants/Typography';
 import { OrderNote } from '../../data/mockData';
+import { businessServicesApi } from '../../services/businessServices';
+import citiesService from '../../services/cities';
+import districtsService from '../../services/districts';
+import operatorClientsService, { ClientSearchResult } from '../../services/operatorClients';
+import { BusinessService, City, District } from '../../types/models';
 
 interface ProductEntry {
     id: string;
+    serviceId: number | null;
     name: string;
     quantity: number;
     price: number;
@@ -29,12 +36,28 @@ interface ProductEntry {
 export default function AddOrderScreen() {
     const router = useRouter();
     const [phone, setPhone] = useState('+993 ');
+    const [clientSuggestions, setClientSuggestions] = useState<ClientSearchResult[]>([]);
+    const [searchingClient, setSearchingClient] = useState(false);
     const [customerName, setCustomerName] = useState('');
     const [address, setAddress] = useState('');
     const [products, setProducts] = useState<ProductEntry[]>([
-        { id: '1', name: 'Вода 20л', quantity: 2, price: 15 },
+        { id: '1', serviceId: null, name: '', quantity: 1, price: 0 },
     ]);
     const [emptyBottles, setEmptyBottles] = useState(0);
+
+    // Services loaded from API
+    const [services, setServices] = useState<BusinessService[]>([]);
+    const [loadingServices, setLoadingServices] = useState(true);
+
+    // Cities & Districts from API
+    const [cities, setCities] = useState<City[]>([]);
+    const [districts, setDistricts] = useState<District[]>([]);
+    const [selectedCityId, setSelectedCityId] = useState<number | null>(null);
+    const [selectedDistrictId, setSelectedDistrictId] = useState<number | null>(null);
+    const [loadingCities, setLoadingCities] = useState(true);
+    const [loadingDistricts, setLoadingDistricts] = useState(false);
+    const [isCityDropdownOpen, setIsCityDropdownOpen] = useState(false);
+    const [isDistrictDropdownOpen, setIsDistrictDropdownOpen] = useState(false);
 
     // Notes
     const [isNoteModalVisible, setIsNoteModalVisible] = useState(false);
@@ -50,6 +73,103 @@ export default function AddOrderScreen() {
 
     // Total Calculation
     const total = products.reduce((sum, p) => sum + p.price * p.quantity, 0);
+
+    // Helper: get price for a service in the selected city
+    const getPriceForCity = (service: BusinessService, cityId: number | null): number => {
+        if (!cityId || !service.prices) return 0;
+        const priceEntry = service.prices.find(p => p.city_id === cityId);
+        return priceEntry ? priceEntry.price : 0;
+    };
+
+    // Phone search: debounce search after 6+ digits typed
+    useEffect(() => {
+        const digits = phone.replace(/\D/g, '');
+        if (digits.length < 6) {
+            setClientSuggestions([]);
+            return;
+        }
+        const timer = setTimeout(async () => {
+            setSearchingClient(true);
+            try {
+                const results = await operatorClientsService.searchByPhone(phone.trim());
+                setClientSuggestions(results);
+            } catch {
+                setClientSuggestions([]);
+            } finally {
+                setSearchingClient(false);
+            }
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [phone]);
+
+    const handleSelectClient = (client: ClientSearchResult) => {
+        setPhone(client.phone);
+        setCustomerName(client.full_name);
+        setClientSuggestions([]);
+    };
+
+    // Load services and cities from backend on mount
+    useEffect(() => {
+        const loadInitialData = async () => {
+            try {
+                const [servicesData, citiesData] = await Promise.all([
+                    businessServicesApi.getAll({ is_active: true }),
+                    citiesService.getAll(),
+                ]);
+                setServices(servicesData);
+                setCities(citiesData);
+                // Pre-select first service
+                if (servicesData.length > 0) {
+                    setProducts(prev => prev.map(p => {
+                        if (!p.serviceId) {
+                            const firstService = servicesData[0];
+                            return { ...p, serviceId: firstService.id, name: firstService.name, price: 0 };
+                        }
+                        return p;
+                    }));
+                }
+            } catch (e) {
+                console.warn('[AddOrder] Failed to load initial data:', e);
+            } finally {
+                setLoadingServices(false);
+                setLoadingCities(false);
+            }
+        };
+        loadInitialData();
+    }, []);
+
+    // Load districts when city changes
+    useEffect(() => {
+        if (!selectedCityId) {
+            setDistricts([]);
+            setSelectedDistrictId(null);
+            return;
+        }
+        const loadDistricts = async () => {
+            setLoadingDistricts(true);
+            try {
+                const data = await districtsService.getAll(selectedCityId);
+                setDistricts(data);
+                setSelectedDistrictId(null);
+            } catch (e) {
+                console.warn('[AddOrder] Failed to load districts:', e);
+            } finally {
+                setLoadingDistricts(false);
+            }
+        };
+        loadDistricts();
+    }, [selectedCityId]);
+
+    // Re-calculate prices when city changes
+    useEffect(() => {
+        if (services.length === 0) return;
+        setProducts(prev => prev.map(p => {
+            if (!p.serviceId) return p;
+            const service = services.find(s => s.id === p.serviceId);
+            if (!service) return p;
+            return { ...p, price: getPriceForCity(service, selectedCityId) };
+        }));
+    }, [selectedCityId, services]);
 
     useEffect(() => {
         if (isCashChecked && !isCardChecked) {
@@ -87,15 +207,17 @@ export default function AddOrderScreen() {
         }
     };
 
-    const getPriceForProduct = (name: string) => {
-        if (name.includes('Замена')) return 50;
-        return 15;
-    };
-
     const addProduct = () => {
+        const firstService = services[0];
         setProducts([
             ...products,
-            { id: Date.now().toString(), name: 'Вода 20л', quantity: 1, price: 15 },
+            {
+                id: Date.now().toString(),
+                serviceId: firstService?.id ?? null,
+                name: firstService?.name ?? '',
+                quantity: 1,
+                price: 0,
+            },
         ]);
     };
 
@@ -103,8 +225,13 @@ export default function AddOrderScreen() {
         setProducts(products.filter((p) => p.id !== id));
     };
 
-    const updateProductName = (id: string, name: string) => {
-        setProducts(products.map((p) => (p.id === id ? { ...p, name, price: getPriceForProduct(name) } : p)));
+    const updateProductService = (productId: string, service: BusinessService) => {
+        const price = getPriceForCity(service, selectedCityId);
+        setProducts(products.map((p) =>
+            p.id === productId
+                ? { ...p, serviceId: service.id, name: service.name, price }
+                : p
+        ));
     };
 
     const updateQuantity = (id: string, quantity: number) => {
@@ -114,9 +241,15 @@ export default function AddOrderScreen() {
     const handleAddNote = (text: string) => {
         const newNote: OrderNote = {
             id: Date.now().toString(),
-            author: 'Amanow Aman',
-            role: 'Оператор',
-            date: new Date().toLocaleString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+            author: 'Курьер',
+            role: 'Курьер',
+            date: new Date().toLocaleString('ru-RU', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            }),
             text,
         };
         setNotes([...notes, newNote]);
@@ -124,8 +257,15 @@ export default function AddOrderScreen() {
     };
 
     const handleSave = () => {
+        // Order creation API endpoint is not yet implemented in backend
+        // This will be connected once POST /api/courier/orders is added
         router.back();
     };
+
+    // Build select options from loaded services
+    const serviceOptions = services.map(s => ({ label: s.name, value: String(s.id) }));
+
+    const activeProductService = products.find(p => p.id === activeProductDropdown);
 
     return (
         <SafeAreaView style={styles.container}>
@@ -148,12 +288,68 @@ export default function AddOrderScreen() {
                     onChangeText={setPhone}
                     placeholder="+993 __ __-__-__-__"
                 />
+                {/* Client search suggestions */}
+                {searchingClient && (
+                    <ActivityIndicator size="small" color={Colors.primary} style={{ marginBottom: 6 }} />
+                )}
+                {clientSuggestions.length > 0 && (
+                    <View style={styles.suggestionsBox}>
+                        {clientSuggestions.map((c) => (
+                            <TouchableOpacity
+                                key={c.id}
+                                style={styles.suggestionRow}
+                                onPress={() => handleSelectClient(c)}
+                            >
+                                <Text style={styles.suggestionName}>{c.full_name}</Text>
+                                <Text style={styles.suggestionPhone}>{c.phone}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                )}
                 <Input
                     label="Имя клиента"
                     value={customerName}
                     onChangeText={setCustomerName}
                     placeholder="Введите имя"
                 />
+
+                {/* City Selector */}
+                <Text style={styles.fieldLabel}>Город</Text>
+                {loadingCities ? (
+                    <ActivityIndicator size="small" color={Colors.primary} style={{ marginBottom: 12 }} />
+                ) : (
+                    <TouchableOpacity
+                        style={styles.selectorButton}
+                        onPress={() => setIsCityDropdownOpen(true)}
+                    >
+                        <Text style={[styles.selectorText, !selectedCityId && styles.selectorPlaceholder]}>
+                            {selectedCityId
+                                ? cities.find(c => c.id === selectedCityId)?.name ?? 'Выберите город'
+                                : 'Выберите город'}
+                        </Text>
+                        <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
+                    </TouchableOpacity>
+                )}
+
+                {/* District Selector */}
+                <Text style={styles.fieldLabel}>Район</Text>
+                {loadingDistricts ? (
+                    <ActivityIndicator size="small" color={Colors.primary} style={{ marginBottom: 12 }} />
+                ) : (
+                    <TouchableOpacity
+                        style={[styles.selectorButton, !selectedCityId && styles.selectorDisabled]}
+                        onPress={() => selectedCityId && setIsDistrictDropdownOpen(true)}
+                        disabled={!selectedCityId}
+                    >
+                        <Text style={[styles.selectorText, !selectedDistrictId && styles.selectorPlaceholder]}>
+                            {selectedDistrictId
+                                ? districts.find(d => d.id === selectedDistrictId)?.name ?? 'Выберите район'
+                                : selectedCityId ? 'Выберите район' : 'Сначала выберите город'}
+                        </Text>
+                        <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
+                    </TouchableOpacity>
+                )}
+
                 <Input
                     label="Адрес"
                     value={address}
@@ -170,41 +366,51 @@ export default function AddOrderScreen() {
                     <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} style={{ marginLeft: 'auto' }} />
                 </TouchableOpacity>
 
-                {/* Divider */}
                 <View style={styles.divider} />
 
                 {/* Products */}
                 <Text style={styles.sectionTitle}>Товары</Text>
 
-                {products.map((product, index) => (
-                    <View key={product.id} style={styles.productItem}>
-                        <View style={styles.productHeaderRow}>
-                            <Text style={styles.productLabel}>Товар {index + 1}:</Text>
-                            {products.length > 1 && (
-                                <TouchableOpacity onPress={() => removeProduct(product.id)}>
-                                    <Ionicons name="trash-outline" size={18} color={Colors.error} />
-                                </TouchableOpacity>
-                            )}
-                        </View>
-                        <TouchableOpacity
-                            style={styles.productDropdown}
-                            onPress={() => setActiveProductDropdown(product.id)}
-                        >
-                            <Text style={styles.productName}>{product.name}</Text>
-                            <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
-                        </TouchableOpacity>
-                        <QuantitySelector
-                            label="Количество:"
-                            value={product.quantity}
-                            onChange={(qty) => updateQuantity(product.id, qty)}
-                        />
+                {loadingServices ? (
+                    <View style={styles.loadingServices}>
+                        <ActivityIndicator size="small" color={Colors.primary} />
+                        <Text style={styles.loadingText}>Загрузка услуг...</Text>
                     </View>
-                ))}
+                ) : (
+                    <>
+                        {products.map((product, index) => (
+                            <View key={product.id} style={styles.productItem}>
+                                <View style={styles.productHeaderRow}>
+                                    <Text style={styles.productLabel}>Товар {index + 1}:</Text>
+                                    {products.length > 1 && (
+                                        <TouchableOpacity onPress={() => removeProduct(product.id)}>
+                                            <Ionicons name="trash-outline" size={18} color={Colors.error} />
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+                                <TouchableOpacity
+                                    style={styles.productDropdown}
+                                    onPress={() => setActiveProductDropdown(product.id)}
+                                >
+                                    <Text style={[styles.productName, !product.name && styles.productNamePlaceholder]}>
+                                        {product.name || 'Выберите услугу'}
+                                    </Text>
+                                    <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
+                                </TouchableOpacity>
+                                <QuantitySelector
+                                    label="Количество:"
+                                    value={product.quantity}
+                                    onChange={(qty) => updateQuantity(product.id, qty)}
+                                />
+                            </View>
+                        ))}
 
-                <TouchableOpacity style={styles.addProductButton} onPress={addProduct}>
-                    <Ionicons name="add" size={18} color={Colors.success} />
-                    <Text style={styles.addProductText}>Добавить товар</Text>
-                </TouchableOpacity>
+                        <TouchableOpacity style={styles.addProductButton} onPress={addProduct}>
+                            <Ionicons name="add" size={18} color={Colors.success} />
+                            <Text style={styles.addProductText}>Добавить товар</Text>
+                        </TouchableOpacity>
+                    </>
+                )}
 
                 <View style={styles.divider} />
 
@@ -301,21 +507,45 @@ export default function AddOrderScreen() {
                 onSave={handleAddNote}
             />
 
-            {/* Product selection modal */}
+            {/* Product / Service selection modal */}
             <SelectModal
                 visible={activeProductDropdown !== null}
-                title="Выберите товар"
-                options={[
-                    { label: 'Вода 20л', value: 'Вода 20л' },
-                    { label: 'Вода 19л (Sarwan)', value: 'Вода 19л (Sarwan)' },
-                    { label: 'Вода 19л (Arçalyk)', value: 'Вода 19л (Arçalyk)' },
-                    { label: 'Помпа', value: 'Помпа' },
-                ]}
-                selectedValue={products.find(p => p.id === activeProductDropdown)?.name || 'Вода 20л'}
+                title="Выберите услугу"
+                options={serviceOptions}
+                selectedValue={activeProductService ? String(activeProductService.serviceId) : ''}
                 onSelect={(val) => {
-                    if (activeProductDropdown) updateProductName(activeProductDropdown, val);
+                    const service = services.find(s => String(s.id) === val);
+                    if (activeProductDropdown && service) {
+                        updateProductService(activeProductDropdown, service);
+                    }
                 }}
                 onClose={() => setActiveProductDropdown(null)}
+            />
+
+            {/* City selection modal */}
+            <SelectModal
+                visible={isCityDropdownOpen}
+                title="Выберите город"
+                options={cities.map(c => ({ label: c.name, value: String(c.id) }))}
+                selectedValue={selectedCityId ? String(selectedCityId) : ''}
+                onSelect={(val) => {
+                    setSelectedCityId(val ? Number(val) : null);
+                    setIsCityDropdownOpen(false);
+                }}
+                onClose={() => setIsCityDropdownOpen(false)}
+            />
+
+            {/* District selection modal */}
+            <SelectModal
+                visible={isDistrictDropdownOpen}
+                title="Выберите район"
+                options={districts.map(d => ({ label: d.name, value: String(d.id) }))}
+                selectedValue={selectedDistrictId ? String(selectedDistrictId) : ''}
+                onSelect={(val) => {
+                    setSelectedDistrictId(val ? Number(val) : null);
+                    setIsDistrictDropdownOpen(false);
+                }}
+                onClose={() => setIsDistrictDropdownOpen(false)}
             />
         </SafeAreaView>
     );
@@ -352,10 +582,51 @@ const styles = StyleSheet.create({
         color: Colors.primary,
         marginBottom: 14,
     },
+    fieldLabel: {
+        ...Typography.label,
+        color: Colors.textSecondary,
+        marginBottom: 6,
+        marginTop: 4,
+    },
+    selectorButton: {
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        justifyContent: 'space-between' as const,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: 8,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        marginBottom: 12,
+        backgroundColor: Colors.white,
+    },
+    selectorText: {
+        ...Typography.bodyM,
+        color: Colors.textPrimary,
+        flex: 1,
+    },
+    selectorPlaceholder: {
+        color: Colors.textPlaceholder,
+    },
+    selectorDisabled: {
+        backgroundColor: Colors.borderLight,
+        opacity: 0.6,
+    },
+
     divider: {
         height: 1,
         backgroundColor: Colors.borderLight,
         marginVertical: 20,
+    },
+    loadingServices: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 16,
+        gap: 10,
+    },
+    loadingText: {
+        ...Typography.bodyM,
+        color: Colors.textSecondary,
     },
     productItem: {
         marginBottom: 16,
@@ -384,6 +655,9 @@ const styles = StyleSheet.create({
         ...Typography.bodyM,
         color: Colors.textPrimary,
         flex: 1,
+    },
+    productNamePlaceholder: {
+        color: Colors.textPlaceholder,
     },
     addProductButton: {
         flexDirection: 'row',
@@ -477,5 +751,31 @@ const styles = StyleSheet.create({
     totalAmount: {
         ...Typography.h4,
         color: Colors.textPrimary,
+    },
+    suggestionsBox: {
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: 8,
+        marginBottom: 12,
+        overflow: 'hidden',
+    },
+    suggestionRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.borderLight,
+        backgroundColor: Colors.white,
+    },
+    suggestionName: {
+        ...Typography.bodyM,
+        color: Colors.textPrimary,
+        flex: 1,
+    },
+    suggestionPhone: {
+        ...Typography.bodyS,
+        color: Colors.textSecondary,
     },
 });

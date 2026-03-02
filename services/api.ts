@@ -13,12 +13,12 @@ const getBaseUrl = (): string => {
 
     if (debuggerHost) {
         const localIp = debuggerHost.split(':')[0];
-        const url = `http://${localIp}:5000/api/admin`;
+        const url = `http://${localIp}:5000/api`;
         console.log('[API] Using LAN IP derived from Expo:', url);
         return url;
     }
 
-    const fallbackUrl = Platform.OS === 'android' ? 'http://10.0.2.2:5000/api/admin' : 'http://localhost:5000/api/admin';
+    const fallbackUrl = Platform.OS === 'android' ? 'http://10.0.2.2:5000/api' : 'http://localhost:5000/api';
     console.log('[API] Using fallback URL:', fallbackUrl);
     return fallbackUrl;
 };

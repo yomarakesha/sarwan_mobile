@@ -17,7 +17,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { cashierEntries, cashierStats } from '../../data/mockData';
 
 export default function CashierScreen() {
-    const { username } = useAuth();
+    const { user } = useAuth();
     const [filter, setFilter] = useState('Все');
     const [refreshing, setRefreshing] = useState(false);
     const insets = useSafeAreaInsets();
@@ -43,12 +43,17 @@ export default function CashierScreen() {
             >
                 {/* Header */}
                 <View style={styles.header}>
-                    <Text style={styles.userName}>{username || 'Пользователь'}</Text>
+                    <Text style={styles.userName}>{user?.full_name || user?.username || 'Пользователь'}</Text>
                     <Text style={styles.dateText}>{new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</Text>
                 </View>
 
                 {/* Cashier summary card */}
                 <View style={styles.summaryCard}>
+                    {/* Decorative circles — matches StatCard */}
+                    <View style={styles.bgCircles}>
+                        <View style={styles.bgCircle1} />
+                        <View style={styles.bgCircle2} />
+                    </View>
                     <View style={styles.summaryHeader}>
                         <Ionicons name="wallet-outline" size={20} color={Colors.textWhite} />
                         <Text style={styles.summaryTitle}>В кассе:</Text>
@@ -197,6 +202,31 @@ const styles = StyleSheet.create({
         borderRadius: 14,
         padding: 16,
         marginBottom: 16,
+        overflow: 'hidden',
+    },
+    bgCircles: {
+        ...StyleSheet.absoluteFillObject,
+        overflow: 'hidden',
+    },
+    bgCircle1: {
+        position: 'absolute',
+        right: -20,
+        top: -10,
+        width: 110,
+        height: 110,
+        borderRadius: 55,
+        borderWidth: 22,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    bgCircle2: {
+        position: 'absolute',
+        right: -40,
+        top: 15,
+        width: 110,
+        height: 110,
+        borderRadius: 55,
+        borderWidth: 22,
+        borderColor: 'rgba(255,255,255,0.05)',
     },
     summaryHeader: {
         flexDirection: 'row',

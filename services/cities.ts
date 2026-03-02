@@ -2,23 +2,27 @@ import { City } from '../types/models';
 import api from './api';
 
 export const citiesService = {
-    /** GET /cities */
-    getAll: () => api.get<City[]>('/cities'),
+    /** GET /admin/cities */
+    getAll: () => api.get<City[]>('/admin/cities'),
 
-    /** POST /cities */
-    add: (name: string) => api.post<City>('/cities', { name }),
+    /** POST /admin/cities */
+    add: (name: string) => api.post<City>('/admin/cities', { name }),
 
-    /** PUT /cities/:id */
+    /** PUT /admin/cities/:id */
     update: (id: number, name: string) =>
-        api.put<{ message: string; city: City }>(`/cities/${id}`, { name }),
+        api.put<{ message: string; city: City }>(`/admin/cities/${id}`, { name }),
 
-    /** PATCH /cities/:id/block */
+    /** PATCH /admin/cities/:id/block */
     block: (id: number) =>
-        api.patch<{ message: string; city: City }>(`/cities/${id}/block`),
+        api.patch<{ message: string; city: City }>(`/admin/cities/${id}/block`),
 
-    /** PATCH /cities/:id/unblock */
+    /** PATCH /admin/cities/:id/unblock */
     unblock: (id: number) =>
-        api.patch<{ message: string; city: City }>(`/cities/${id}/unblock`),
+        api.patch<{ message: string; city: City }>(`/admin/cities/${id}/unblock`),
+
+    /** GET /admin/cities/full-list */
+    getFullList: () =>
+        api.get<Array<City & { districts_count: number; couriers_count: number }>>('/admin/cities/full-list'),
 };
 
 export default citiesService;

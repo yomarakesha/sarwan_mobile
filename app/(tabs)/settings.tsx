@@ -18,10 +18,14 @@ import { useAuth } from '../../contexts/AuthContext';
 
 export default function SettingsScreen() {
     const router = useRouter();
-    const { logout, isLoading, username } = useAuth();
+    const { logout, isLoading, user } = useAuth();
     const insets = useSafeAreaInsets();
 
-    const displayName = username || 'Пользователь';
+    const displayName = user?.full_name || user?.username || 'Пользователь';
+    const displayRole = user?.role === 'admin' ? 'Администратор'
+        : user?.role === 'courier' ? 'Курьер'
+            : user?.role === 'operator' ? 'Оператор'
+                : user?.role || 'Пользователь';
 
     const handleLogout = async () => {
         await logout();
@@ -50,7 +54,7 @@ export default function SettingsScreen() {
                     </View>
                     <View style={styles.profileInfo}>
                         <Text style={styles.profileName}>{displayName}</Text>
-                        <Text style={styles.profileRole}>Администратор</Text>
+                        <Text style={styles.profileRole}>{displayRole}</Text>
                     </View>
                 </Card>
 

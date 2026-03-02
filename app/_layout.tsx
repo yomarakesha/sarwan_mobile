@@ -15,7 +15,12 @@ import { AuthProvider, useAuth } from '../contexts/AuthContext';
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigator() {
-  const { isAuthenticated } = useAuth();
+  const { isCheckingSession } = useAuth();
+
+  // While checking existing session — keep splash visible
+  if (isCheckingSession) {
+    return null;
+  }
 
   return (
     <>
