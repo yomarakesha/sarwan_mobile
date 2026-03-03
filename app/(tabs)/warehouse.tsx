@@ -102,6 +102,7 @@ export default function WarehouseScreen() {
     }, [loadData]);
 
     const handleNewAction = () => router.push('/warehouse/new-action');
+    const handleReceiveFromWarehouse = () => router.push('/warehouse/receive-from-warehouse');
 
     const handleActionPress = (action: WarehouseAction) => {
         setSelectedAction(action);
@@ -158,14 +159,23 @@ export default function WarehouseScreen() {
                     </View>
                 </View>
 
-                {/* New action button */}
-                <View style={styles.newActionContainer}>
+                {/* Action buttons */}
+                <View style={styles.actionButtonsRow}>
                     <Button
                         title="Новое действие"
                         onPress={handleNewAction}
                         variant="primary"
                         size="medium"
-                        icon={<Ionicons name="add" size={18} color={Colors.textWhite} />}
+                        icon={<Ionicons name="swap-horizontal" size={18} color={Colors.textWhite} />}
+                        style={{ flex: 1 }}
+                    />
+                    <Button
+                        title="Со склада"
+                        onPress={handleReceiveFromWarehouse}
+                        variant="secondary"
+                        size="medium"
+                        icon={<Ionicons name="download-outline" size={18} color={Colors.primary} />}
+                        style={{ flex: 1 }}
                     />
                 </View>
 
@@ -291,7 +301,9 @@ const styles = StyleSheet.create({
         ...Typography.h3,
         color: Colors.textWhite,
     },
-    newActionContainer: {
+    actionButtonsRow: {
+        flexDirection: 'row',
+        gap: 10,
         marginBottom: 16,
     },
 });

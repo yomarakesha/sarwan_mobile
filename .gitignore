@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Backend (not tracked in this repo)
+sarwan_mvp/

@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
+    ActivityIndicator,
     RefreshControl,
     SafeAreaView,
     ScrollView,
@@ -14,18 +15,59 @@ import EmptyState from '../../components/EmptyState';
 import Colors from '../../constants/Colors';
 import Typography from '../../constants/Typography';
 import { useAuth } from '../../contexts/AuthContext';
-import { cashierEntries, cashierStats } from '../../data/mockData';
+import courierOrdersService, { CourierOrder, todayStr } from '../../services/courierOrders';
+
+const PAYMENT_FILTERS = ['Все', 'Наличные', 'Карта', 'Смешанная'];
+
+function getPaymentTypes(order: CourierOrder): string[] {
+    const types: string[] = [];
+    if (order.payment_cash > 0) types.push('наличные');
+    if (order.payment_card > 0) types.push('карта');
+    if (types.length === 0) types.push('бесплатно');
+    return types;
+}
 
 export default function CashierScreen() {
     const { user } = useAuth();
     const [filter, setFilter] = useState('Все');
     const [refreshing, setRefreshing] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [orders, setOrders] = useState<CourierOrder[]>([]);
     const insets = useSafeAreaInsets();
+
+    const loadOrders = useCallback(async () => {
+        try {
+            const data = await courierOrdersService.getByDate(todayStr());
+            // Show only delivered orders in cashier view
+            setOrders(data.filter(o => o.status === 'delivered' || o.payment_cash > 0 || o.payment_card > 0));
+        } catch (e) {
+            console.warn('[Cashier] Failed to load orders:', e);
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    }, []);
+
+    useEffect(() => { loadOrders(); }, [loadOrders]);
 
     const onRefresh = useCallback(() => {
         setRefreshing(true);
-        setTimeout(() => setRefreshing(false), 1000);
-    }, []);
+        loadOrders();
+    }, [loadOrders]);
+
+    // Compute cashier stats from real orders
+    const totalCash = orders.reduce((sum, o) => sum + (o.payment_cash ?? 0), 0);
+    const totalCard = orders.reduce((sum, o) => sum + (o.payment_card ?? 0), 0);
+    const totalAmount = totalCash + totalCard;
+
+    // Apply filter
+    const filteredOrders = orders.filter(o => {
+        if (filter === 'Все') return true;
+        if (filter === 'Наличные') return o.payment_cash > 0 && o.payment_card === 0;
+        if (filter === 'Карта') return o.payment_card > 0 && o.payment_cash === 0;
+        if (filter === 'Смешанная') return o.payment_cash > 0 && o.payment_card > 0;
+        return true;
+    });
 
     return (
         <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
@@ -57,16 +99,16 @@ export default function CashierScreen() {
                     <View style={styles.summaryHeader}>
                         <Ionicons name="wallet-outline" size={20} color={Colors.textWhite} />
                         <Text style={styles.summaryTitle}>В кассе:</Text>
-                        <Text style={styles.summaryTotal}>{cashierStats.total} TMT</Text>
+                        <Text style={styles.summaryTotal}>{totalAmount} TMT</Text>
                     </View>
                     <View style={styles.summaryDetails}>
                         <View style={styles.summaryItem}>
                             <Text style={styles.summaryLabel}>Нал.:</Text>
-                            <Text style={styles.summaryValue}>{cashierStats.cash} TMT</Text>
+                            <Text style={styles.summaryValue}>{totalCash} TMT</Text>
                         </View>
                         <View style={styles.summaryItem}>
                             <Text style={styles.summaryLabel}>Карта :</Text>
-                            <Text style={styles.summaryValue}>{cashierStats.card} TMT</Text>
+                            <Text style={styles.summaryValue}>{totalCard} TMT</Text>
                         </View>
                     </View>
                 </View>
@@ -74,7 +116,13 @@ export default function CashierScreen() {
                 {/* Filter row */}
                 <View style={styles.filterRow}>
                     <Text style={styles.historyTitle}>История</Text>
-                    <TouchableOpacity style={styles.filterButton}>
+                    <TouchableOpacity
+                        style={styles.filterButton}
+                        onPress={() => {
+                            const idx = PAYMENT_FILTERS.indexOf(filter);
+                            setFilter(PAYMENT_FILTERS[(idx + 1) % PAYMENT_FILTERS.length]);
+                        }}
+                    >
                         <Text style={styles.filterLabel}>Оплата:</Text>
                         <Text style={styles.filterValue}>{filter}</Text>
                         <Ionicons name="chevron-down" size={14} color={Colors.textSecondary} />
@@ -82,83 +130,84 @@ export default function CashierScreen() {
                 </View>
 
                 {/* Cashier entries */}
-                {cashierEntries.length > 0 ? (
-                    cashierEntries.map((entry) => (
-                        <View key={entry.id} style={styles.entryCard}>
-                            {/* Time */}
-                            <View style={styles.timeRow}>
-                                <Ionicons name="time-outline" size={14} color={Colors.textSecondary} />
-                                <Text style={styles.timeText}>{entry.timeSlot}</Text>
-                            </View>
+                {loading ? (
+                    <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 32 }} />
+                ) : filteredOrders.length > 0 ? (
+                    filteredOrders.map((order) => {
+                        const payTypes = getPaymentTypes(order);
+                        const time = new Date(order.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                        return (
+                            <View key={order.id} style={styles.entryCard}>
+                                {/* Time */}
+                                <View style={styles.timeRow}>
+                                    <Ionicons name="time-outline" size={14} color={Colors.textSecondary} />
+                                    <Text style={styles.timeText}>{time}</Text>
+                                </View>
 
-                            {/* Address */}
-                            <View style={styles.infoRow}>
-                                <Ionicons name="location-outline" size={14} color={Colors.textSecondary} />
-                                <Text style={styles.infoText}>{entry.address}</Text>
-                            </View>
+                                {/* Address */}
+                                <View style={styles.infoRow}>
+                                    <Ionicons name="location-outline" size={14} color={Colors.textSecondary} />
+                                    <Text style={styles.infoText}>{order.address_line || '—'}</Text>
+                                </View>
 
-                            {/* Products */}
-                            {entry.products.map((product) => (
-                                <View key={product.id} style={styles.productRow}>
-                                    <View style={[styles.infoRow, { flex: 1, marginRight: 8 }]}>
-                                        <Ionicons name="water-outline" size={14} color={Colors.textSecondary} />
-                                        <Text style={styles.infoText} numberOfLines={1}>
-                                            {product.name} ({product.quantity}шт)
-                                        </Text>
+                                {/* Client */}
+                                <View style={styles.infoRow}>
+                                    <Ionicons name="person-outline" size={14} color={Colors.textSecondary} />
+                                    <Text style={styles.infoText}>{order.client_name}</Text>
+                                </View>
+
+                                {/* Products */}
+                                {order.items.map((item) => (
+                                    <View key={item.id} style={styles.productRow}>
+                                        <View style={[styles.infoRow, { flex: 1, marginRight: 8 }]}>
+                                            <Ionicons name="water-outline" size={14} color={Colors.textSecondary} />
+                                            <Text style={styles.infoText} numberOfLines={1}>
+                                                {item.service_name} ({item.quantity}шт)
+                                            </Text>
+                                        </View>
+                                        <Text style={styles.priceText}>{item.price * item.quantity} TMT</Text>
                                     </View>
-                                    <Text style={styles.priceText}>{product.price} TMT</Text>
-                                </View>
-                            ))}
+                                ))}
 
-                            {/* Extra items badge */}
-                            {entry.products.length > 1 && (
-                                <View style={styles.extraBadge}>
-                                    <Text style={styles.extraBadgeText}>+{entry.products.length - 1}</Text>
-                                </View>
-                            )}
-
-                            {/* Payment tags */}
-                            <View style={styles.paymentRow}>
-                                <Text style={styles.paymentLabel}>Оплата:</Text>
-                                {entry.paymentTypes.map((type, i) => (
-                                    <View
-                                        key={i}
-                                        style={[
-                                            styles.paymentTag,
-                                            {
-                                                backgroundColor:
-                                                    type === 'наличные'
-                                                        ? Colors.infoBlueLight
-                                                        : type === 'карта'
-                                                            ? Colors.successLight
-                                                            : type === 'кредит'
-                                                                ? Colors.warningLight
-                                                                : Colors.primaryLight,
-                                            },
-                                        ]}
-                                    >
-                                        <Text
+                                {/* Payment tags */}
+                                <View style={styles.paymentRow}>
+                                    <Text style={styles.paymentLabel}>Оплата:</Text>
+                                    {payTypes.map((type, i) => (
+                                        <View
+                                            key={i}
                                             style={[
-                                                styles.paymentTagText,
+                                                styles.paymentTag,
                                                 {
-                                                    color:
+                                                    backgroundColor:
                                                         type === 'наличные'
-                                                            ? Colors.infoBlue
+                                                            ? Colors.infoBlueLight
                                                             : type === 'карта'
-                                                                ? Colors.success
-                                                                : type === 'кредит'
-                                                                    ? Colors.warning
-                                                                    : Colors.primary,
+                                                                ? Colors.successLight
+                                                                : Colors.primaryLight,
                                                 },
                                             ]}
                                         >
-                                            {type}
-                                        </Text>
-                                    </View>
-                                ))}
+                                            <Text
+                                                style={[
+                                                    styles.paymentTagText,
+                                                    {
+                                                        color:
+                                                            type === 'наличные'
+                                                                ? Colors.infoBlue
+                                                                : type === 'карта'
+                                                                    ? Colors.success
+                                                                    : Colors.primary,
+                                                    },
+                                                ]}
+                                            >
+                                                {type}
+                                            </Text>
+                                        </View>
+                                    ))}
+                                </View>
                             </View>
-                        </View>
-                    ))
+                        );
+                    })
                 ) : (
                     <EmptyState
                         icon="cash-outline"
@@ -328,20 +377,6 @@ const styles = StyleSheet.create({
         color: Colors.textPrimary,
         fontWeight: '500',
         flexShrink: 0,
-    },
-    extraBadge: {
-        backgroundColor: Colors.primaryLight,
-        paddingHorizontal: 8,
-        paddingVertical: 2,
-        borderRadius: 10,
-        alignSelf: 'flex-start',
-        marginTop: 4,
-        marginBottom: 8,
-    },
-    extraBadgeText: {
-        ...Typography.micro,
-        color: Colors.primary,
-        fontWeight: '600',
     },
     paymentRow: {
         flexDirection: 'row',

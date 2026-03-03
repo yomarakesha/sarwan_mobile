@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     SafeAreaView,
     ScrollView,
     StyleSheet,
@@ -21,6 +22,7 @@ import Typography from '../../constants/Typography';
 import { OrderNote } from '../../data/mockData';
 import { businessServicesApi } from '../../services/businessServices';
 import citiesService from '../../services/cities';
+import courierOrdersService from '../../services/courierOrders';
 import districtsService from '../../services/districts';
 import operatorClientsService, { ClientSearchResult } from '../../services/operatorClients';
 import { BusinessService, City, District } from '../../types/models';
@@ -256,10 +258,49 @@ export default function AddOrderScreen() {
         setIsNoteModalVisible(false);
     };
 
-    const handleSave = () => {
-        // Order creation API endpoint is not yet implemented in backend
-        // This will be connected once POST /api/courier/orders is added
-        router.back();
+    const handleSave = async () => {
+        // Validate required fields
+        const digits = phone.replace(/\D/g, '');
+        if (digits.length < 8) {
+            Alert.alert('Ошибка', 'Введите корректный номер телефона');
+            return;
+        }
+        if (!customerName.trim()) {
+            Alert.alert('Ошибка', 'Введите имя клиента');
+            return;
+        }
+        if (products.some(p => !p.serviceId)) {
+            Alert.alert('Ошибка', 'Выберите услугу для каждого товара');
+            return;
+        }
+
+        try {
+            const payload = {
+                client_name: customerName.trim(),
+                client_phone: phone.trim(),
+                city_id: selectedCityId,
+                district_id: selectedDistrictId,
+                address_line: address.trim() || undefined,
+                empty_bottles_collected: emptyBottles,
+                payment_cash: parseFloat(paymentCashStr) || 0,
+                payment_card: parseFloat(paymentCardStr) || 0,
+                note: notes.length > 0 ? notes.map(n => n.text).join('\n') : undefined,
+                items: products.map(p => {
+                    const service = services.find(s => s.id === p.serviceId);
+                    return {
+                        service_id: p.serviceId!,
+                        service_name: service?.name ?? p.name,
+                        quantity: p.quantity,
+                        price: p.price,
+                    };
+                }),
+            };
+            await courierOrdersService.create(payload);
+            router.back();
+        } catch (e: any) {
+            console.warn('[AddOrder] Save failed:', e);
+            Alert.alert('Ошибка', e?.message || 'Не удалось сохранить заказ');
+        }
     };
 
     // Build select options from loaded services

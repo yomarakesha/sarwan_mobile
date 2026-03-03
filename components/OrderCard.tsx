@@ -4,12 +4,12 @@ import React, { useState } from 'react';
 import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Colors from '../constants/Colors';
 import Typography from '../constants/Typography';
-import { Order } from '../data/mockData';
+import courierOrdersService, { CourierOrder } from '../services/courierOrders';
 import Button from './Button';
 import StatusDropdown, { OrderStatus } from './StatusDropdown';
 
 interface OrderCardProps {
-    order: Order;
+    order: CourierOrder;
 }
 
 export default function OrderCard({ order }: OrderCardProps) {
@@ -21,12 +21,27 @@ export default function OrderCard({ order }: OrderCardProps) {
     };
 
     const handleCall = () => {
-        Linking.openURL('tel:+9936200112233');
+        const phone = order.client_phone?.replace(/\s/g, '') ?? '';
+        if (phone) Linking.openURL(`tel:${phone}`);
     };
 
-    const handleStatusChange = (newStatus: OrderStatus) => {
+    const handleStatusChange = async (newStatus: OrderStatus) => {
         setStatus(newStatus);
+        try {
+            await courierOrdersService.updateStatus(order.id, newStatus);
+        } catch (e) {
+            console.warn('[OrderCard] Failed to update status:', e);
+        }
     };
+
+    // Format time from ISO created_at
+    const timeStr = order.created_at
+        ? new Date(order.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+        : '—';
+
+    // Build address string
+    const address = [order.city_name, order.district_name, order.address_line]
+        .filter(Boolean).join(', ') || '—';
 
     // Determine if we should show the compact (filled) layout
     const isFilled = status === 'in_transit' || status === 'В пути' ||
@@ -37,39 +52,39 @@ export default function OrderCard({ order }: OrderCardProps) {
             {/* Time slot */}
             <View style={styles.timeRow}>
                 <Ionicons name="time-outline" size={14} color={Colors.textSecondary} />
-                <Text style={styles.timeText}>{order.timeSlot}</Text>
+                <Text style={styles.timeText}>{timeStr}</Text>
+                <Text style={styles.clientName}> · {order.client_name}</Text>
             </View>
 
             {/* Address */}
             <View style={styles.row}>
                 <Ionicons name="location-outline" size={14} color={Colors.textSecondary} />
-                <Text style={styles.infoText} numberOfLines={1}>{order.address}</Text>
+                <Text style={styles.infoText} numberOfLines={1}>{address}</Text>
             </View>
 
-            {/* Products */}
-            {order.products.slice(0, 2).map((product) => (
-                <View key={product.id} style={styles.productRow}>
+            {/* Items */}
+            {order.items.slice(0, 2).map((item) => (
+                <View key={item.id} style={styles.productRow}>
                     <View style={[styles.row, { flex: 1, marginRight: 8 }]}>
                         <Ionicons name="water-outline" size={14} color={Colors.textSecondary} />
                         <Text style={styles.infoText} numberOfLines={1}>
-                            {product.name} ({product.quantity}шт)
+                            {item.service_name} ({item.quantity}шт)
                         </Text>
                     </View>
-                    <Text style={styles.priceText}>{product.price} TMT</Text>
+                    <Text style={styles.priceText}>{item.price * item.quantity} TMT</Text>
                 </View>
             ))}
 
             {/* Extra items indicator */}
-            {order.products.length > 2 && (
+            {order.items.length > 2 && (
                 <View style={styles.extraBadge}>
-                    <Text style={styles.extraBadgeText}>+{order.products.length - 2}</Text>
+                    <Text style={styles.extraBadgeText}>+{order.items.length - 2}</Text>
                 </View>
             )}
 
             {/* Bottom: Status dropdown + Call button */}
             <View style={styles.bottomRow}>
                 {isFilled ? (
-                    /* В пути / Доставлено: filled dropdown stretches, icon-only call button */
                     <>
                         <View style={{ flex: 1, marginRight: 10 }}>
                             <StatusDropdown
@@ -86,7 +101,6 @@ export default function OrderCard({ order }: OrderCardProps) {
                         </TouchableOpacity>
                     </>
                 ) : (
-                    /* В ожидании / Отменено: small pill + Позвонить button with text */
                     <>
                         <StatusDropdown
                             currentStatus={status}
@@ -132,6 +146,10 @@ const styles = StyleSheet.create({
         color: Colors.primary,
         fontWeight: '500',
         marginLeft: 6,
+    },
+    clientName: {
+        ...Typography.bodyS,
+        color: Colors.textSecondary,
     },
     row: {
         flexDirection: 'row',

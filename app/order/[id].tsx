@@ -1,7 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+    ActivityIndicator,
+    Alert,
     SafeAreaView,
     ScrollView,
     StyleSheet,
@@ -15,16 +17,115 @@ import QuantitySelector from '../../components/QuantitySelector';
 import StatusDropdown, { OrderStatus } from '../../components/StatusDropdown';
 import Colors from '../../constants/Colors';
 import Typography from '../../constants/Typography';
-import { orders } from '../../data/mockData';
+import { OrderNote } from '../../data/mockData';
+import courierOrdersService, { CourierOrder } from '../../services/courierOrders';
 
 export default function OrderDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
-    const order = orders.find((o) => o.id === id) || orders[0];
 
+    const [order, setOrder] = useState<CourierOrder | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
     const [showNoteModal, setShowNoteModal] = useState(false);
-    const [emptyBottles, setEmptyBottles] = useState(order.emptyBottlesCollected);
-    const [orderStatus, setOrderStatus] = useState<string>(order.status);
+    const [emptyBottles, setEmptyBottles] = useState(0);
+    const [orderStatus, setOrderStatus] = useState<string>('waiting');
+    const [notes, setNotes] = useState<OrderNote[]>([]);
+
+    useEffect(() => {
+        if (!id) return;
+        const load = async () => {
+            try {
+                const data = await courierOrdersService.getById(Number(id));
+                setOrder(data);
+                setEmptyBottles(data.empty_bottles_collected ?? 0);
+                setOrderStatus(data.status);
+            } catch (e) {
+                console.warn('[OrderDetail] Failed to load order:', e);
+                Alert.alert('Ошибка', 'Не удалось загрузить заказ');
+            } finally {
+                setLoading(false);
+            }
+        };
+        load();
+    }, [id]);
+
+    const handleStatusChange = async (newStatus: OrderStatus) => {
+        setOrderStatus(newStatus);
+        if (!id) return;
+        try {
+            await courierOrdersService.updateStatus(Number(id), newStatus);
+        } catch (e) {
+            console.warn('[OrderDetail] Failed to update status:', e);
+        }
+    };
+
+    const handleAddNote = async (text: string) => {
+        const newNote: OrderNote = {
+            id: Date.now().toString(),
+            author: 'Курьер',
+            role: 'Курьер',
+            date: new Date().toLocaleString('ru-RU', {
+                day: 'numeric', month: 'short', year: 'numeric',
+                hour: '2-digit', minute: '2-digit',
+            }),
+            text,
+        };
+        setNotes(prev => [...prev, newNote]);
+        setShowNoteModal(false);
+        if (id) {
+            try {
+                await courierOrdersService.addNote(Number(id), text);
+            } catch (e) {
+                console.warn('[OrderDetail] Failed to save note:', e);
+            }
+        }
+    };
+
+    const handleSave = async () => {
+        if (!id) return;
+        setSaving(true);
+        try {
+            await courierOrdersService.updateStatus(Number(id), orderStatus);
+            router.back();
+        } catch (e) {
+            console.warn('[OrderDetail] Failed to save:', e);
+            Alert.alert('Ошибка', 'Не удалось сохранить изменения');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+                        <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>Загрузка...</Text>
+                    <View style={{ width: 32 }} />
+                </View>
+                <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 40 }} />
+            </SafeAreaView>
+        );
+    }
+
+    if (!order) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+                        <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>Заказ не найден</Text>
+                    <View style={{ width: 32 }} />
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    const allNotes = [...notes];
 
     return (
         <SafeAreaView style={styles.container}>
@@ -33,15 +134,15 @@ export default function OrderDetailScreen() {
                 <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
                     <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Заказ №{order.orderNumber}</Text>
+                <Text style={styles.headerTitle}>Заказ №{order.id}</Text>
                 <TouchableOpacity
                     onPress={() => setShowNoteModal(true)}
                     style={styles.noteButton}
                 >
                     <Ionicons name="create-outline" size={22} color={Colors.primary} />
-                    {order.notes.length > 0 && (
+                    {allNotes.length > 0 && (
                         <View style={styles.noteBadge}>
-                            <Text style={styles.noteBadgeText}>{order.notes.length}</Text>
+                            <Text style={styles.noteBadgeText}>{allNotes.length}</Text>
                         </View>
                     )}
                 </TouchableOpacity>
@@ -53,33 +154,19 @@ export default function OrderDetailScreen() {
 
                 <View style={styles.infoRow}>
                     <Ionicons name="call-outline" size={16} color={Colors.textSecondary} />
-                    <Text style={styles.infoText}>{order.phone}</Text>
+                    <Text style={styles.infoText}>{order.client_phone}</Text>
                 </View>
                 <View style={styles.infoRow}>
                     <Ionicons name="person-outline" size={16} color={Colors.textSecondary} />
-                    <Text style={styles.infoText}>{order.customerName}</Text>
+                    <Text style={styles.infoText}>{order.client_name}</Text>
                 </View>
                 <View style={styles.infoRow}>
                     <Ionicons name="location-outline" size={16} color={Colors.textSecondary} />
-                    <Text style={styles.infoText}>{order.address}{'\n'}{order.apartment}</Text>
+                    <Text style={styles.infoText}>
+                        {[order.city_name, order.district_name, order.address_line]
+                            .filter(Boolean).join(', ')}
+                    </Text>
                 </View>
-                <View style={styles.infoRow}>
-                    <Ionicons name="layers-outline" size={16} color={Colors.textSecondary} />
-                    <Text style={styles.infoText}>{order.floor}</Text>
-                </View>
-
-                {/* Promo badge */}
-                {order.promoText && (
-                    <View style={styles.promoCard}>
-                        <Ionicons name="pricetag-outline" size={16} color={Colors.success} />
-                        <View style={styles.promoInfo}>
-                            <Text style={styles.promoText}>{order.promoText}</Text>
-                            {order.promoProgress && (
-                                <Text style={styles.promoProgress}>Осталось: {order.promoProgress}</Text>
-                            )}
-                        </View>
-                    </View>
-                )}
 
                 {/* Divider */}
                 <View style={styles.divider} />
@@ -87,28 +174,23 @@ export default function OrderDetailScreen() {
                 {/* Section: Order Details */}
                 <Text style={styles.sectionTitle}>Детали заказа</Text>
 
-                {order.products.map((product, index) => (
-                    <View key={product.id} style={styles.productItem}>
+                {order.items.map((item, index) => (
+                    <View key={item.id} style={styles.productItem}>
                         <View style={styles.productHeader}>
-                            <Text style={styles.productLabel}>Товар{order.products.length > 1 ? ` ${index + 1}` : ''}:</Text>
+                            <Text style={styles.productLabel}>
+                                Товар{order.items.length > 1 ? ` ${index + 1}` : ''}:
+                            </Text>
                             <View style={styles.productDropdown}>
-                                <Text style={styles.productName}>{product.name}</Text>
-                                <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
+                                <Text style={styles.productName}>{item.service_name}</Text>
                             </View>
                         </View>
                         <QuantitySelector
                             label="Количество:"
-                            value={product.quantity}
+                            value={item.quantity}
                             onChange={() => { }}
                         />
                     </View>
                 ))}
-
-                {/* Add product button */}
-                <TouchableOpacity style={styles.addProductButton}>
-                    <Ionicons name="add" size={18} color={Colors.success} />
-                    <Text style={styles.addProductText}>Добавить товар</Text>
-                </TouchableOpacity>
 
                 {/* Divider */}
                 <View style={styles.divider} />
@@ -127,43 +209,44 @@ export default function OrderDetailScreen() {
                 {/* Section: Payment */}
                 <Text style={styles.sectionTitle}>Оплата</Text>
 
-                {order.paymentType === 'free' ? (
-                    <Text style={styles.freeText}>Бесплатно</Text>
-                ) : order.paymentType === 'credit_no_pay' ? (
-                    <Text style={styles.creditText}>Кредит (Без оплаты)</Text>
-                ) : (
-                    <>
-                        <View style={styles.paymentRow}>
-                            <View style={styles.checkboxRow}>
-                                <View style={[styles.checkbox, order.paymentCash > 0 && styles.checkboxActive]}>
-                                    {order.paymentCash > 0 && (
-                                        <Ionicons name="checkmark" size={14} color={Colors.white} />
-                                    )}
-                                </View>
-                                <Text style={styles.paymentLabel}>Наличные:</Text>
-                            </View>
-                            <Text style={styles.paymentAmount}>{order.paymentCash}</Text>
-                            <Text style={styles.paymentCurrency}>TMT</Text>
+                <View style={styles.paymentRow}>
+                    <View style={styles.checkboxRow}>
+                        <View style={[styles.checkbox, order.payment_cash > 0 && styles.checkboxActive]}>
+                            {order.payment_cash > 0 && (
+                                <Ionicons name="checkmark" size={14} color={Colors.white} />
+                            )}
                         </View>
-                        <View style={styles.paymentRow}>
-                            <View style={styles.checkboxRow}>
-                                <View style={[styles.checkbox, order.paymentCard > 0 && styles.checkboxActive]}>
-                                    {order.paymentCard > 0 && (
-                                        <Ionicons name="checkmark" size={14} color={Colors.white} />
-                                    )}
-                                </View>
-                                <Text style={styles.paymentLabel}>Карта:</Text>
-                            </View>
-                            <Text style={styles.paymentAmount}>{order.paymentCard}</Text>
-                            <Text style={styles.paymentCurrency}>TMT</Text>
+                        <Text style={styles.paymentLabel}>Наличные:</Text>
+                    </View>
+                    <Text style={styles.paymentAmount}>{order.payment_cash}</Text>
+                    <Text style={styles.paymentCurrency}>TMT</Text>
+                </View>
+                <View style={styles.paymentRow}>
+                    <View style={styles.checkboxRow}>
+                        <View style={[styles.checkbox, order.payment_card > 0 && styles.checkboxActive]}>
+                            {order.payment_card > 0 && (
+                                <Ionicons name="checkmark" size={14} color={Colors.white} />
+                            )}
                         </View>
+                        <Text style={styles.paymentLabel}>Карта:</Text>
+                    </View>
+                    <Text style={styles.paymentAmount}>{order.payment_card}</Text>
+                    <Text style={styles.paymentCurrency}>TMT</Text>
+                </View>
 
-                        <View style={styles.totalRow}>
-                            <Text style={styles.totalLabel}>Итого:</Text>
-                            <Text style={styles.totalAmount}>{order.total} TMT</Text>
-                        </View>
+                <View style={styles.totalRow}>
+                    <Text style={styles.totalLabel}>Итого:</Text>
+                    <Text style={styles.totalAmount}>{order.total} TMT</Text>
+                </View>
+
+                {/* Note */}
+                {order.note ? (
+                    <>
+                        <View style={styles.divider} />
+                        <Text style={styles.sectionTitle}>Заметка</Text>
+                        <Text style={styles.noteText}>{order.note}</Text>
                     </>
-                )}
+                ) : null}
 
                 <View style={{ height: 100 }} />
             </ScrollView>
@@ -177,7 +260,7 @@ export default function OrderDetailScreen() {
                 ) : (
                     <StatusDropdown
                         currentStatus={orderStatus}
-                        onStatusChange={(s: OrderStatus) => setOrderStatus(s)}
+                        onStatusChange={handleStatusChange}
                     />
                 )}
                 <Button
@@ -195,10 +278,8 @@ export default function OrderDetailScreen() {
             <NoteModal
                 visible={showNoteModal}
                 onClose={() => setShowNoteModal(false)}
-                notes={order.notes}
-                onSave={(text) => {
-                    setShowNoteModal(false);
-                }}
+                notes={allNotes}
+                onSave={handleAddNote}
             />
         </SafeAreaView>
     );
@@ -269,29 +350,6 @@ const styles = StyleSheet.create({
         marginLeft: 10,
         flex: 1,
     },
-    promoCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: Colors.successLight,
-        padding: 12,
-        borderRadius: 10,
-        marginTop: 8,
-        marginBottom: 4,
-    },
-    promoInfo: {
-        marginLeft: 10,
-        flex: 1,
-    },
-    promoText: {
-        ...Typography.bodyS,
-        color: Colors.success,
-        fontWeight: '600',
-    },
-    promoProgress: {
-        ...Typography.caption,
-        color: Colors.success,
-        marginTop: 2,
-    },
     divider: {
         height: 1,
         backgroundColor: Colors.borderLight,
@@ -325,33 +383,6 @@ const styles = StyleSheet.create({
         ...Typography.bodyM,
         color: Colors.textPrimary,
         flex: 1,
-    },
-    addProductButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 1.5,
-        borderColor: Colors.success,
-        borderRadius: 10,
-        paddingVertical: 12,
-        marginTop: 4,
-        backgroundColor: Colors.successLight,
-    },
-    addProductText: {
-        ...Typography.button,
-        color: Colors.success,
-        marginLeft: 6,
-        fontWeight: '600',
-    },
-    freeText: {
-        ...Typography.bodyM,
-        color: Colors.success,
-        fontWeight: '600',
-    },
-    creditText: {
-        ...Typography.bodyM,
-        color: Colors.warning,
-        fontWeight: '600',
     },
     paymentRow: {
         flexDirection: 'row',
@@ -410,6 +441,11 @@ const styles = StyleSheet.create({
         ...Typography.h3,
         color: Colors.textPrimary,
     },
+    noteText: {
+        ...Typography.bodyM,
+        color: Colors.textSecondary,
+        fontStyle: 'italic',
+    },
     bottomBar: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -419,10 +455,6 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: Colors.borderLight,
         backgroundColor: Colors.white,
-    },
-    statusButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
     },
     deliveredButton: {
         backgroundColor: Colors.success,

@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   RefreshControl,
   SafeAreaView,
   ScrollView,
@@ -17,23 +18,43 @@ import StatCard from '../../components/StatCard';
 import Colors from '../../constants/Colors';
 import Typography from '../../constants/Typography';
 import { useAuth } from '../../contexts/AuthContext';
-import { orders, ordersStats } from '../../data/mockData';
+import courierOrdersService, { CourierOrder, todayStr } from '../../services/courierOrders';
 
 export default function OrdersScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState<CourierOrder[]>([]);
   const insets = useSafeAreaInsets();
+
+  const loadOrders = useCallback(async () => {
+    try {
+      const data = await courierOrdersService.getByDate(todayStr());
+      setOrders(data);
+    } catch (e) {
+      console.warn('[Orders] Failed to load orders:', e);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => { loadOrders(); }, [loadOrders]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    // Simulate API refresh
-    setTimeout(() => setRefreshing(false), 1000);
-  }, []);
+    loadOrders();
+  }, [loadOrders]);
 
   const handleAddOrder = () => {
     router.push('/order/add-order');
   };
+
+  // Compute stats from real data
+  const completedOrders = orders.filter(o => o.status === 'delivered').length;
+  const totalOrders = orders.length;
+  const totalEmptyBottles = orders.reduce((sum, o) => sum + (o.empty_bottles_collected ?? 0), 0);
 
   return (
     <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
@@ -59,14 +80,14 @@ export default function OrdersScreen() {
         <View style={styles.statsRow}>
           <StatCard
             title="Заказы"
-            current={ordersStats.completedOrders}
-            total={ordersStats.totalOrders}
+            current={completedOrders}
+            total={totalOrders}
             icon="time-outline"
           />
           <StatCard
-            title="Тары"
-            current={ordersStats.collectedTary}
-            total={ordersStats.totalTary}
+            title="Пустые тары"
+            current={totalEmptyBottles}
+            total={totalEmptyBottles}
             icon="water-outline"
           />
         </View>
@@ -83,9 +104,11 @@ export default function OrdersScreen() {
         </View>
 
         {/* Order list */}
-        {orders.length > 0 ? (
+        {loading ? (
+          <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 32 }} />
+        ) : orders.length > 0 ? (
           orders.map((order) => (
-            <OrderCard key={order.id} order={order} />
+            <OrderCard key={String(order.id)} order={order} />
           ))
         ) : (
           <EmptyState

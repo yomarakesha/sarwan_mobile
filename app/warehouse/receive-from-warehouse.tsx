@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -16,45 +16,44 @@ import Input from '../../components/Input';
 import SelectModal from '../../components/SelectModal';
 import Colors from '../../constants/Colors';
 import Typography from '../../constants/Typography';
-import courierTransactionsService from '../../services/courierTransactions';
-import { couriersService } from '../../services/couriers';
+import { useAuth } from '../../contexts/AuthContext';
 import productStatesService from '../../services/productStates';
 import productsService from '../../services/products';
-import { Product, ProductState } from '../../types/models';
+import warehouseLocationsService from '../../services/warehouseLocations';
+import warehouseTransactionsService from '../../services/warehouseTransactions';
+import { Location, Product, ProductState } from '../../types/models';
 
 interface ProductEntry {
     id: string;
-    /** product_id (real ID) */
     productId: number | null;
     productName: string;
-    /** product_state_id (real ID) */
     stateId: number | null;
     stateName: string;
     quantity: number;
 }
 
-interface CourierOption {
-    id: number;
-    name: string;
-}
-
-export default function NewWarehouseActionScreen() {
+export default function ReceiveFromWarehouseScreen() {
     const router = useRouter();
+    const { user } = useAuth();
 
-    // Meta loaded from backend
-    const [couriers, setCouriers] = useState<CourierOption[]>([]);
+    // Meta data
+    const [warehouses, setWarehouses] = useState<Location[]>([]);
+    const [courierLocations, setCourierLocations] = useState<Location[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [productStates, setProductStates] = useState<ProductState[]>([]);
     const [loadingMeta, setLoadingMeta] = useState(true);
     const [saving, setSaving] = useState(false);
 
     // Form state
-    const [toCourierId, setToCourierId] = useState<number | null>(null);
-    const [toCourierName, setToCourierName] = useState('');
+    const [fromWarehouseId, setFromWarehouseId] = useState<number | null>(null);
+    const [fromWarehouseName, setFromWarehouseName] = useState('');
+    const [toLocationId, setToLocationId] = useState<number | null>(null);
+    const [toLocationName, setToLocationName] = useState('');
     const [notes, setNotes] = useState('');
 
     // Modal visibility
-    const [courierModalVisible, setCourierModalVisible] = useState(false);
+    const [warehouseModalVisible, setWarehouseModalVisible] = useState(false);
+    const [courierLocModalVisible, setCourierLocModalVisible] = useState(false);
     const [activeEntryForProduct, setActiveEntryForProduct] = useState<string | null>(null);
     const [activeEntryForState, setActiveEntryForState] = useState<string | null>(null);
 
@@ -62,27 +61,27 @@ export default function NewWarehouseActionScreen() {
         { id: '1', productId: null, productName: '', stateId: null, stateName: '', quantity: 1 },
     ]);
 
-    // Load couriers, products, product states from backend
     useEffect(() => {
         const load = async () => {
             try {
-                const [couriersData, productsData, statesData] = await Promise.all([
-                    couriersService.getFullList(),
+                const [warehousesData, courierLocsData, productsData, statesData] = await Promise.all([
+                    warehouseLocationsService.getWarehouses(),
+                    warehouseLocationsService.getCouriers(),
                     productsService.getAll(),
                     productStatesService.getAll(),
                 ]);
 
-                const courierOptions: CourierOption[] = couriersData.map((c: any) => ({
-                    id: c.id,
-                    name: c.full_name ?? c.username ?? `Курьер ${c.id}`,
-                }));
-                setCouriers(courierOptions);
-                setProducts(productsData.filter((p: Product) => p.is_active));
-                setProductStates(statesData.filter((s: ProductState) => s.is_active));
+                setWarehouses(warehousesData);
+                setCourierLocations(courierLocsData);
 
-                // Pre-select first product + first state for the default entry
-                const firstProduct = productsData.find((p: Product) => p.is_active);
-                const firstState = statesData.find((s: ProductState) => s.is_active);
+                const activeProducts = productsData.filter((p: Product) => p.is_active);
+                const activeStates = statesData.filter((s: ProductState) => s.is_active);
+                setProducts(activeProducts);
+                setProductStates(activeStates);
+
+                // Pre-fill first product entry
+                const firstProduct = activeProducts[0];
+                const firstState = activeStates[0];
                 setEntries([{
                     id: '1',
                     productId: firstProduct?.id ?? null,
@@ -91,15 +90,26 @@ export default function NewWarehouseActionScreen() {
                     stateName: firstState?.name ?? '',
                     quantity: 1,
                 }]);
+
+                // Auto-select my courier location by matching user's full_name or id
+                const myLoc = courierLocsData.find(
+                    (l: Location) =>
+                        l.name?.toLowerCase().includes(user?.full_name?.toLowerCase() ?? '') ||
+                        l.name?.toLowerCase().includes(user?.username?.toLowerCase() ?? '')
+                );
+                if (myLoc) {
+                    setToLocationId(myLoc.id);
+                    setToLocationName(myLoc.name);
+                }
             } catch (e) {
-                console.warn('[NewAction] Failed to load meta:', e);
+                console.warn('[ReceiveFromWarehouse] Failed to load meta:', e);
                 Alert.alert('Ошибка', 'Не удалось загрузить данные');
             } finally {
                 setLoadingMeta(false);
             }
         };
         load();
-    }, []);
+    }, [user]);
 
     const addEntry = () =>
         setEntries(prev => [
@@ -123,35 +133,45 @@ export default function NewWarehouseActionScreen() {
         );
 
     const handleSave = async () => {
-        if (!toCourierId) {
-            Alert.alert('Ошибка', 'Выберите курьера');
+        if (!fromWarehouseId) {
+            Alert.alert('Ошибка', 'Выберите склад-источник');
+            return;
+        }
+        if (!toLocationId) {
+            Alert.alert('Ошибка', 'Выберите локацию вашей машины');
             return;
         }
         if (entries.some(e => !e.productId || !e.stateId)) {
             Alert.alert('Ошибка', 'Выберите продукт и состояние для каждого товара');
             return;
         }
+
         setSaving(true);
         try {
             for (const e of entries) {
-                await courierTransactionsService.transferToCourier({
-                    to_user_id: toCourierId,
+                await warehouseTransactionsService.create({
+                    from_location_id: fromWarehouseId,
+                    to_location_id: toLocationId,
                     product_id: e.productId!,
                     product_state_id: e.stateId!,
                     quantity: e.quantity,
+                    operation_type: 'transfer',
                     note: notes || undefined,
                 });
             }
-            router.back();
+            Alert.alert('Успешно', 'Товар получен со склада', [
+                { text: 'OK', onPress: () => router.back() },
+            ]);
         } catch (e: any) {
-            console.warn('[NewAction] Save failed:', e);
+            console.warn('[ReceiveFromWarehouse] Save failed:', e);
             Alert.alert('Ошибка', e?.message || 'Не удалось создать транзакцию');
         } finally {
             setSaving(false);
         }
     };
 
-    const courierOptions = couriers.map(c => ({ label: c.name, value: String(c.id) }));
+    const warehouseOptions = warehouses.map(w => ({ label: w.name, value: String(w.id) }));
+    const courierLocOptions = courierLocations.map(l => ({ label: l.name, value: String(l.id) }));
     const productOptions = products.map(p => ({ label: p.name, value: String(p.id) }));
     const stateOptions = productStates.map(s => ({ label: s.name, value: String(s.id) }));
 
@@ -159,7 +179,11 @@ export default function NewWarehouseActionScreen() {
         return (
             <SafeAreaView style={styles.container}>
                 <View style={styles.header}>
-                    <Text style={styles.headerTitle}>Новое действие</Text>
+                    <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+                        <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>Получить со склада</Text>
+                    <View style={{ width: 32 }} />
                 </View>
                 <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 40 }} />
             </SafeAreaView>
@@ -170,20 +194,36 @@ export default function NewWarehouseActionScreen() {
         <SafeAreaView style={styles.container}>
             {/* Header */}
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>Новое действие</Text>
+                <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+                    <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Получить со склада</Text>
+                <View style={{ width: 32 }} />
             </View>
 
             <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-                {/* Кому (target courier) */}
-                <Text style={styles.fieldLabel}>Кому</Text>
-                <TouchableOpacity style={styles.dropdown} onPress={() => setCourierModalVisible(true)}>
-                    <Text style={[styles.dropdownText, !toCourierName && styles.placeholder]}>
-                        {toCourierName || 'Выберите курьера'}
+                {/* Source warehouse */}
+                <Text style={styles.sectionTitle}>Откуда</Text>
+                <Text style={styles.fieldLabel}>Склад</Text>
+                <TouchableOpacity style={styles.dropdown} onPress={() => setWarehouseModalVisible(true)}>
+                    <Text style={[styles.dropdownText, !fromWarehouseName && styles.placeholder]}>
+                        {fromWarehouseName || 'Выберите склад'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
+                </TouchableOpacity>
+
+                {/* Destination: courier's car */}
+                <Text style={styles.sectionTitle}>Куда</Text>
+                <Text style={styles.fieldLabel}>Ваша машина / локация</Text>
+                <TouchableOpacity style={styles.dropdown} onPress={() => setCourierLocModalVisible(true)}>
+                    <Text style={[styles.dropdownText, !toLocationName && styles.placeholder]}>
+                        {toLocationName || 'Выберите вашу локацию'}
                     </Text>
                     <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
                 </TouchableOpacity>
 
                 {/* Product entries */}
+                <Text style={styles.sectionTitle}>Товары</Text>
                 {entries.map((entry, index) => (
                     <View key={entry.id} style={styles.productSection}>
                         <View style={styles.productHeaderRow}>
@@ -195,7 +235,7 @@ export default function NewWarehouseActionScreen() {
                             )}
                         </View>
 
-                        {/* Product + State row */}
+                        {/* Product + State */}
                         <View style={styles.typeRow}>
                             <View style={styles.typeItem}>
                                 <Text style={styles.typeLabel}>Продукт</Text>
@@ -250,7 +290,7 @@ export default function NewWarehouseActionScreen() {
                     onChangeText={setNotes}
                     placeholder="Нет заметок"
                     multiline
-                    numberOfLines={4}
+                    numberOfLines={3}
                     style={{ marginTop: 16 }}
                 />
 
@@ -263,27 +303,39 @@ export default function NewWarehouseActionScreen() {
                     <Text style={styles.cancelText}>Отмена</Text>
                 </TouchableOpacity>
                 <Button
-                    title={saving ? 'Сохранение...' : 'Сохранить'}
+                    title={saving ? 'Сохранение...' : 'Получить товар'}
                     onPress={handleSave}
                     variant="primary"
                     size="medium"
                     fullWidth={false}
-                    style={{ paddingHorizontal: 40 }}
+                    style={{ paddingHorizontal: 30 }}
                 />
             </View>
 
             {/* Modals */}
             <SelectModal
-                visible={courierModalVisible}
-                title="Выберите курьера"
-                options={courierOptions}
-                selectedValue={toCourierId ? String(toCourierId) : ''}
+                visible={warehouseModalVisible}
+                title="Выберите склад"
+                options={warehouseOptions}
+                selectedValue={fromWarehouseId ? String(fromWarehouseId) : ''}
                 onSelect={(val) => {
-                    const c = couriers.find(x => String(x.id) === val);
-                    if (c) { setToCourierId(c.id); setToCourierName(c.name); }
-                    setCourierModalVisible(false);
+                    const w = warehouses.find(x => String(x.id) === val);
+                    if (w) { setFromWarehouseId(w.id); setFromWarehouseName(w.name); }
+                    setWarehouseModalVisible(false);
                 }}
-                onClose={() => setCourierModalVisible(false)}
+                onClose={() => setWarehouseModalVisible(false)}
+            />
+            <SelectModal
+                visible={courierLocModalVisible}
+                title="Ваша локация (машина)"
+                options={courierLocOptions}
+                selectedValue={toLocationId ? String(toLocationId) : ''}
+                onSelect={(val) => {
+                    const l = courierLocations.find(x => String(x.id) === val);
+                    if (l) { setToLocationId(l.id); setToLocationName(l.name); }
+                    setCourierLocModalVisible(false);
+                }}
+                onClose={() => setCourierLocModalVisible(false)}
             />
             <SelectModal
                 visible={activeEntryForProduct !== null}
@@ -335,19 +387,31 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.white,
     },
     header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
         paddingHorizontal: 16,
-        paddingVertical: 14,
+        paddingVertical: 12,
         borderBottomWidth: 1,
         borderBottomColor: Colors.borderLight,
     },
+    backButton: { padding: 4 },
     headerTitle: {
         ...Typography.h4,
         color: Colors.textPrimary,
+        flex: 1,
+        textAlign: 'center',
     },
     scroll: {
         flex: 1,
         paddingHorizontal: 20,
         paddingTop: 20,
+    },
+    sectionTitle: {
+        ...Typography.h5,
+        color: Colors.primary,
+        marginBottom: 10,
+        marginTop: 4,
     },
     fieldLabel: {
         ...Typography.label,
@@ -363,7 +427,7 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         paddingHorizontal: 14,
         paddingVertical: 12,
-        marginBottom: 16,
+        marginBottom: 20,
     },
     dropdownSmall: {
         flexDirection: 'row',
@@ -380,9 +444,7 @@ const styles = StyleSheet.create({
         color: Colors.textPrimary,
         flex: 1,
     },
-    placeholder: {
-        color: Colors.textSecondary,
-    },
+    placeholder: { color: Colors.textSecondary },
     productSection: {
         marginBottom: 16,
         paddingBottom: 16,
@@ -404,9 +466,7 @@ const styles = StyleSheet.create({
         gap: 12,
         marginBottom: 12,
     },
-    typeItem: {
-        flex: 1,
-    },
+    typeItem: { flex: 1 },
     typeLabel: {
         ...Typography.label,
         color: Colors.textSecondary,
