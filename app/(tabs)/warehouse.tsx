@@ -30,7 +30,10 @@ function txToAction(tx: CourierTransaction): WarehouseAction {
             hour: '2-digit',
             minute: '2-digit',
         }),
+        // inventory_in = получили со склада (Принято), всё остальное = передали (Передано)
         status: tx.operation_type === 'inventory_in' ? 'received' : 'transferred',
+        // Бэкенд возвращает только from_location_name — используем его
+        // Карточка сама покажет "От кого:" или "Кому:" по статусу
         person: tx.from_location_name ?? '—',
         items: [
             {

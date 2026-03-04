@@ -155,7 +155,7 @@ export default function ReceiveFromWarehouseScreen() {
                     product_id: e.productId!,
                     product_state_id: e.stateId!,
                     quantity: e.quantity,
-                    operation_type: 'transfer',
+                    operation_type: 'inventory_in',
                     note: notes || undefined,
                 });
             }
