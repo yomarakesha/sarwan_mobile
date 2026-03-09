@@ -234,6 +234,19 @@ export default function OrderDetailScreen() {
                     <Text style={styles.paymentCurrency}>TMT</Text>
                 </View>
 
+                <View style={styles.paymentRow}>
+                    <View style={styles.checkboxRow}>
+                        <View style={[styles.checkbox, (order.payment_credit ?? 0) > 0 && styles.checkboxActive]}>
+                            {(order.payment_credit ?? 0) > 0 && (
+                                <Ionicons name="checkmark" size={14} color={Colors.white} />
+                            )}
+                        </View>
+                        <Text style={styles.paymentLabel}>Кредит (Оплата воды):</Text>
+                    </View>
+                    <Text style={styles.paymentAmount}>{order.payment_credit ?? 0}</Text>
+                    <Text style={styles.paymentCurrency}>TMT</Text>
+                </View>
+
                 <View style={styles.totalRow}>
                     <Text style={styles.totalLabel}>Итого:</Text>
                     <Text style={styles.totalAmount}>{order.total} TMT</Text>
@@ -383,6 +396,22 @@ const styles = StyleSheet.create({
         ...Typography.bodyM,
         color: Colors.textPrimary,
         flex: 1,
+    },
+    addProductButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: Colors.primary,
+        borderStyle: 'dashed',
+        marginTop: 4,
+    },
+    addProductText: {
+        ...Typography.button,
+        color: Colors.primary,
+        marginLeft: 8,
     },
     paymentRow: {
         flexDirection: 'row',

@@ -169,15 +169,7 @@ export default function WarehouseScreen() {
                         onPress={handleNewAction}
                         variant="primary"
                         size="medium"
-                        icon={<Ionicons name="swap-horizontal" size={18} color={Colors.textWhite} />}
-                        style={{ flex: 1 }}
-                    />
-                    <Button
-                        title="Со склада"
-                        onPress={handleReceiveFromWarehouse}
-                        variant="secondary"
-                        size="medium"
-                        icon={<Ionicons name="download-outline" size={18} color={Colors.primary} />}
+                        icon={<Ionicons name="add" size={18} color={Colors.textWhite} />}
                         style={{ flex: 1 }}
                     />
                 </View>

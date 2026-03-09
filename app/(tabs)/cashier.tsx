@@ -17,12 +17,13 @@ import Typography from '../../constants/Typography';
 import { useAuth } from '../../contexts/AuthContext';
 import courierOrdersService, { CourierOrder, todayStr } from '../../services/courierOrders';
 
-const PAYMENT_FILTERS = ['Все', 'Наличные', 'Карта', 'Смешанная'];
+const PAYMENT_FILTERS = ['Все', 'Наличные', 'Карта', 'Кредит', 'Смешанная'];
 
 function getPaymentTypes(order: CourierOrder): string[] {
     const types: string[] = [];
     if (order.payment_cash > 0) types.push('наличные');
     if (order.payment_card > 0) types.push('карта');
+    if ((order.payment_credit ?? 0) > 0) types.push('кредит');
     if (types.length === 0) types.push('бесплатно');
     return types;
 }
@@ -39,7 +40,7 @@ export default function CashierScreen() {
         try {
             const data = await courierOrdersService.getByDate(todayStr());
             // Show only delivered orders in cashier view
-            setOrders(data.filter(o => o.status === 'delivered' || o.payment_cash > 0 || o.payment_card > 0));
+            setOrders(data.filter(o => o.status === 'delivered' || o.payment_cash > 0 || o.payment_card > 0 || (o.payment_credit ?? 0) > 0));
         } catch (e) {
             console.warn('[Cashier] Failed to load orders:', e);
         } finally {
@@ -58,14 +59,16 @@ export default function CashierScreen() {
     // Compute cashier stats from real orders
     const totalCash = orders.reduce((sum, o) => sum + (o.payment_cash ?? 0), 0);
     const totalCard = orders.reduce((sum, o) => sum + (o.payment_card ?? 0), 0);
-    const totalAmount = totalCash + totalCard;
+    const totalCredit = orders.reduce((sum, o) => sum + (o.payment_credit ?? 0), 0);
+    const totalAmount = totalCash + totalCard + totalCredit;
 
     // Apply filter
     const filteredOrders = orders.filter(o => {
         if (filter === 'Все') return true;
-        if (filter === 'Наличные') return o.payment_cash > 0 && o.payment_card === 0;
-        if (filter === 'Карта') return o.payment_card > 0 && o.payment_cash === 0;
-        if (filter === 'Смешанная') return o.payment_cash > 0 && o.payment_card > 0;
+        if (filter === 'Наличные') return o.payment_cash > 0 && o.payment_card === 0 && (o.payment_credit ?? 0) === 0;
+        if (filter === 'Карта') return o.payment_card > 0 && o.payment_cash === 0 && (o.payment_credit ?? 0) === 0;
+        if (filter === 'Кредит') return (o.payment_credit ?? 0) > 0 && o.payment_cash === 0 && o.payment_card === 0;
+        if (filter === 'Смешанная') return (o.payment_cash > 0 ? 1 : 0) + (o.payment_card > 0 ? 1 : 0) + ((o.payment_credit ?? 0) > 0 ? 1 : 0) > 1;
         return true;
     });
 
@@ -109,6 +112,10 @@ export default function CashierScreen() {
                         <View style={styles.summaryItem}>
                             <Text style={styles.summaryLabel}>Карта :</Text>
                             <Text style={styles.summaryValue}>{totalCard} TMT</Text>
+                        </View>
+                        <View style={styles.summaryItem}>
+                            <Text style={styles.summaryLabel}>Кредит:</Text>
+                            <Text style={styles.summaryValue}>{totalCredit} TMT</Text>
                         </View>
                     </View>
                 </View>
@@ -183,7 +190,9 @@ export default function CashierScreen() {
                                                             ? Colors.infoBlueLight
                                                             : type === 'карта'
                                                                 ? Colors.successLight
-                                                                : Colors.primaryLight,
+                                                                : type === 'кредит'
+                                                                    ? Colors.orangePromoLight || '#FFEEDB'
+                                                                    : Colors.primaryLight,
                                                 },
                                             ]}
                                         >
@@ -196,7 +205,9 @@ export default function CashierScreen() {
                                                                 ? Colors.infoBlue
                                                                 : type === 'карта'
                                                                     ? Colors.success
-                                                                    : Colors.primary,
+                                                                    : type === 'кредит'
+                                                                        ? Colors.orangePromo || '#FA8C16'
+                                                                        : Colors.primary,
                                                     },
                                                 ]}
                                             >

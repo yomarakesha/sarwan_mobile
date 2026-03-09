@@ -23,6 +23,7 @@ export interface CourierOrder {
     empty_bottles_collected: number;
     payment_cash: number;
     payment_card: number;
+    payment_credit: number;
     total: number;
     status: 'waiting' | 'in_transit' | 'delivered' | 'cancelled';
     note: string | null;
@@ -39,6 +40,7 @@ export interface CreateOrderPayload {
     empty_bottles_collected?: number;
     payment_cash?: number;
     payment_card?: number;
+    payment_credit?: number;
     note?: string;
     items: {
         service_id: number;

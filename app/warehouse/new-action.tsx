@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    KeyboardAvoidingView,
+    Platform,
     SafeAreaView,
     ScrollView,
     StyleSheet,
@@ -11,6 +13,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
 import SelectModal from '../../components/SelectModal';
@@ -40,6 +43,7 @@ interface CourierOption {
 
 export default function NewWarehouseActionScreen() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
 
     // Meta loaded from backend
     const [couriers, setCouriers] = useState<CourierOption[]>([]);
@@ -61,6 +65,9 @@ export default function NewWarehouseActionScreen() {
     const [entries, setEntries] = useState<ProductEntry[]>([
         { id: '1', productId: null, productName: '', stateId: null, stateName: '', quantity: 1 },
     ]);
+
+    const [actionStatus, setActionStatus] = useState<'transferred' | 'received'>('transferred');
+    const [statusModalVisible, setStatusModalVisible] = useState(false);
 
     // Load couriers, products, product states from backend
     useEffect(() => {
@@ -128,7 +135,11 @@ export default function NewWarehouseActionScreen() {
             return;
         }
         if (entries.some(e => !e.productId || !e.stateId)) {
-            Alert.alert('Ошибка', 'Выберите продукт и состояние для каждого товара');
+            Alert.alert('Ошибка', 'Выберите тип тары и её состояние (полные/пустые) для каждого товара');
+            return;
+        }
+        if (actionStatus === 'received') {
+            Alert.alert('Информация', 'Прием товаров пока не поддерживается сервером напрямую для курьеров (только передача).');
             return;
         }
         setSaving(true);
@@ -157,7 +168,7 @@ export default function NewWarehouseActionScreen() {
 
     if (loadingMeta) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
                 <View style={styles.header}>
                     <Text style={styles.headerTitle}>Новое действие</Text>
                 </View>
@@ -167,115 +178,145 @@ export default function NewWarehouseActionScreen() {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Text style={styles.headerTitle}>Новое действие</Text>
-            </View>
+        <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+            >
+                {/* Header */}
+                <View style={styles.header}>
+                    <Text style={styles.headerTitle}>Новое действие</Text>
+                </View>
 
-            <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-                {/* Кому (target courier) */}
-                <Text style={styles.fieldLabel}>Кому</Text>
-                <TouchableOpacity style={styles.dropdown} onPress={() => setCourierModalVisible(true)}>
-                    <Text style={[styles.dropdownText, !toCourierName && styles.placeholder]}>
-                        {toCourierName || 'Выберите курьера'}
+                <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+                    {/* Статус */}
+                    <Text style={styles.fieldLabel}>Статус</Text>
+                    <TouchableOpacity style={styles.dropdown} onPress={() => setStatusModalVisible(true)}>
+                        <Text style={styles.dropdownText}>
+                            {actionStatus === 'transferred' ? 'Передано' : 'Принято'}
+                        </Text>
+                        <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
+                    </TouchableOpacity>
+
+                    {/* Кому / От кого */}
+                    <Text style={styles.fieldLabel}>
+                        {actionStatus === 'transferred' ? 'Кому' : 'От кого'}
                     </Text>
-                    <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
-                </TouchableOpacity>
+                    <TouchableOpacity style={styles.dropdown} onPress={() => setCourierModalVisible(true)}>
+                        <Text style={[styles.dropdownText, !toCourierName && styles.placeholder]}>
+                            {toCourierName || 'Выберите курьера'}
+                        </Text>
+                        <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
+                    </TouchableOpacity>
 
-                {/* Product entries */}
-                {entries.map((entry, index) => (
-                    <View key={entry.id} style={styles.productSection}>
-                        <View style={styles.productHeaderRow}>
-                            <Text style={styles.productTitle}>Товар {index + 1}:</Text>
-                            {entries.length > 1 && (
-                                <TouchableOpacity onPress={() => removeEntry(entry.id)}>
-                                    <Ionicons name="trash-outline" size={18} color={Colors.error} />
+                    {/* Product entries */}
+                    {entries.map((entry, index) => (
+                        <View key={entry.id} style={styles.productSection}>
+                            <View style={styles.productHeaderRow}>
+                                <Text style={styles.productTitle}>Товар {index + 1}:</Text>
+                                {entries.length > 1 && (
+                                    <TouchableOpacity onPress={() => removeEntry(entry.id)}>
+                                        <Ionicons name="trash-outline" size={18} color={Colors.error} />
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+
+                            {/* Product + State row (Тары + Тип тары) */}
+                            <View style={styles.typeRow}>
+                                <View style={styles.typeItem}>
+                                    <Text style={styles.typeLabel}>Тары</Text>
+                                    <TouchableOpacity
+                                        style={styles.dropdownSmall}
+                                        onPress={() => setActiveEntryForState(entry.id)}
+                                    >
+                                        <Text style={[styles.dropdownText, !entry.stateName && styles.placeholder]} numberOfLines={1}>
+                                            {entry.stateName || 'Выберите'}
+                                        </Text>
+                                        <Ionicons name="chevron-down" size={14} color={Colors.textSecondary} />
+                                    </TouchableOpacity>
+                                </View>
+                                <View style={styles.typeItem}>
+                                    <Text style={styles.typeLabel}>Тип тары</Text>
+                                    <TouchableOpacity
+                                        style={styles.dropdownSmall}
+                                        onPress={() => setActiveEntryForProduct(entry.id)}
+                                    >
+                                        <Text style={[styles.dropdownText, !entry.productName && styles.placeholder]} numberOfLines={1}>
+                                            {entry.productName || 'Выберите'}
+                                        </Text>
+                                        <Ionicons name="chevron-down" size={14} color={Colors.textSecondary} />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+
+                            {/* Quantity */}
+                            <Text style={styles.typeLabel}>Количество</Text>
+                            <View style={styles.quantityRow}>
+                                <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(entry.id, -1)}>
+                                    <Ionicons name="remove" size={18} color={Colors.primary} />
                                 </TouchableOpacity>
-                            )}
-                        </View>
-
-                        {/* Product + State row */}
-                        <View style={styles.typeRow}>
-                            <View style={styles.typeItem}>
-                                <Text style={styles.typeLabel}>Продукт</Text>
-                                <TouchableOpacity
-                                    style={styles.dropdownSmall}
-                                    onPress={() => setActiveEntryForProduct(entry.id)}
-                                >
-                                    <Text style={[styles.dropdownText, !entry.productName && styles.placeholder]} numberOfLines={1}>
-                                        {entry.productName || 'Выберите'}
-                                    </Text>
-                                    <Ionicons name="chevron-down" size={14} color={Colors.textSecondary} />
+                                <Text style={styles.qtyValue}>{entry.quantity}</Text>
+                                <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(entry.id, 1)}>
+                                    <Ionicons name="add" size={18} color={Colors.primary} />
                                 </TouchableOpacity>
                             </View>
-                            <View style={styles.typeItem}>
-                                <Text style={styles.typeLabel}>Состояние</Text>
-                                <TouchableOpacity
-                                    style={styles.dropdownSmall}
-                                    onPress={() => setActiveEntryForState(entry.id)}
-                                >
-                                    <Text style={[styles.dropdownText, !entry.stateName && styles.placeholder]} numberOfLines={1}>
-                                        {entry.stateName || 'Выберите'}
-                                    </Text>
-                                    <Ionicons name="chevron-down" size={14} color={Colors.textSecondary} />
-                                </TouchableOpacity>
-                            </View>
                         </View>
+                    ))}
 
-                        {/* Quantity */}
-                        <Text style={styles.typeLabel}>Количество</Text>
-                        <View style={styles.quantityRow}>
-                            <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(entry.id, -1)}>
-                                <Ionicons name="remove" size={18} color={Colors.primary} />
-                            </TouchableOpacity>
-                            <Text style={styles.qtyValue}>{entry.quantity}</Text>
-                            <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(entry.id, 1)}>
-                                <Ionicons name="add" size={18} color={Colors.primary} />
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                ))}
+                    {/* Add entry */}
+                    <TouchableOpacity style={styles.addProductButton} onPress={addEntry}>
+                        <Ionicons name="add" size={18} color={Colors.success} />
+                        <Text style={styles.addProductText}>Добавить товар</Text>
+                    </TouchableOpacity>
 
-                {/* Add entry */}
-                <TouchableOpacity style={styles.addProductButton} onPress={addEntry}>
-                    <Ionicons name="add" size={18} color={Colors.success} />
-                    <Text style={styles.addProductText}>Добавить товар</Text>
-                </TouchableOpacity>
+                    {/* Notes */}
+                    <Input
+                        label="Заметки:"
+                        value={notes}
+                        onChangeText={setNotes}
+                        placeholder="Нет заметок"
+                        multiline
+                        numberOfLines={4}
+                        style={{ marginTop: 16 }}
+                    />
 
-                {/* Notes */}
-                <Input
-                    label="Заметки:"
-                    value={notes}
-                    onChangeText={setNotes}
-                    placeholder="Нет заметок"
-                    multiline
-                    numberOfLines={4}
-                    style={{ marginTop: 16 }}
-                />
+                    <View style={{ height: 100 }} />
+                </ScrollView>
 
-                <View style={{ height: 100 }} />
-            </ScrollView>
-
-            {/* Bottom bar */}
-            <View style={styles.bottomBar}>
-                <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()}>
-                    <Text style={styles.cancelText}>Отмена</Text>
-                </TouchableOpacity>
-                <Button
-                    title={saving ? 'Сохранение...' : 'Сохранить'}
-                    onPress={handleSave}
-                    variant="primary"
-                    size="medium"
-                    fullWidth={false}
-                    style={{ paddingHorizontal: 40 }}
-                />
-            </View>
+                {/* Bottom bar */}
+                <View style={styles.bottomBar}>
+                    <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()}>
+                        <Text style={styles.cancelText}>Отмена</Text>
+                    </TouchableOpacity>
+                    <Button
+                        title={saving ? 'Сохранение...' : 'Сохранить'}
+                        onPress={handleSave}
+                        variant="primary"
+                        size="medium"
+                        fullWidth={false}
+                        style={{ paddingHorizontal: 40 }}
+                    />
+                </View>
+            </KeyboardAvoidingView>
 
             {/* Modals */}
             <SelectModal
+                visible={statusModalVisible}
+                title="Выберите статус"
+                options={[
+                    { label: 'Передано', value: 'transferred' },
+                    { label: 'Принято', value: 'received' },
+                ]}
+                selectedValue={actionStatus}
+                onSelect={(val) => {
+                    setActionStatus(val as 'transferred' | 'received');
+                    setStatusModalVisible(false);
+                }}
+                onClose={() => setStatusModalVisible(false)}
+            />
+            <SelectModal
                 visible={courierModalVisible}
-                title="Выберите курьера"
+                title={actionStatus === 'transferred' ? 'Выберите кому передать' : 'Выберите от кого принято'}
                 options={courierOptions}
                 selectedValue={toCourierId ? String(toCourierId) : ''}
                 onSelect={(val) => {

@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    KeyboardAvoidingView,
+    Platform,
     SafeAreaView,
     ScrollView,
     StyleSheet,
@@ -12,6 +14,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
 import NoteModal from '../../components/NoteModal';
@@ -37,6 +40,7 @@ interface ProductEntry {
 
 export default function AddOrderScreen() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const [phone, setPhone] = useState('+993 ');
     const [clientSuggestions, setClientSuggestions] = useState<ClientSearchResult[]>([]);
     const [searchingClient, setSearchingClient] = useState(false);
@@ -309,236 +313,241 @@ export default function AddOrderScreen() {
     const activeProductService = products.find(p => p.id === activeProductDropdown);
 
     return (
-        <SafeAreaView style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-                    <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Новый заказ</Text>
-                <View style={{ width: 32 }} />
-            </View>
-
-            <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-                {/* Customer info */}
-                <Text style={styles.sectionTitle}>Информация о клиенте</Text>
-
-                <Input
-                    label="Телефон"
-                    value={phone}
-                    onChangeText={setPhone}
-                    placeholder="+993 __ __-__-__-__"
-                />
-                {/* Client search suggestions */}
-                {searchingClient && (
-                    <ActivityIndicator size="small" color={Colors.primary} style={{ marginBottom: 6 }} />
-                )}
-                {clientSuggestions.length > 0 && (
-                    <View style={styles.suggestionsBox}>
-                        {clientSuggestions.map((c) => (
-                            <TouchableOpacity
-                                key={c.id}
-                                style={styles.suggestionRow}
-                                onPress={() => handleSelectClient(c)}
-                            >
-                                <Text style={styles.suggestionName}>{c.full_name}</Text>
-                                <Text style={styles.suggestionPhone}>{c.phone}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                )}
-                <Input
-                    label="Имя клиента"
-                    value={customerName}
-                    onChangeText={setCustomerName}
-                    placeholder="Введите имя"
-                />
-
-                {/* City Selector */}
-                <Text style={styles.fieldLabel}>Город</Text>
-                {loadingCities ? (
-                    <ActivityIndicator size="small" color={Colors.primary} style={{ marginBottom: 12 }} />
-                ) : (
-                    <TouchableOpacity
-                        style={styles.selectorButton}
-                        onPress={() => setIsCityDropdownOpen(true)}
-                    >
-                        <Text style={[styles.selectorText, !selectedCityId && styles.selectorPlaceholder]}>
-                            {selectedCityId
-                                ? cities.find(c => c.id === selectedCityId)?.name ?? 'Выберите город'
-                                : 'Выберите город'}
-                        </Text>
-                        <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
+        <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+            >
+                {/* Header */}
+                <View style={styles.header}>
+                    <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+                        <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
                     </TouchableOpacity>
-                )}
+                    <Text style={styles.headerTitle}>Новый заказ</Text>
+                    <View style={{ width: 32 }} />
+                </View>
 
-                {/* District Selector */}
-                <Text style={styles.fieldLabel}>Район</Text>
-                {loadingDistricts ? (
-                    <ActivityIndicator size="small" color={Colors.primary} style={{ marginBottom: 12 }} />
-                ) : (
-                    <TouchableOpacity
-                        style={[styles.selectorButton, !selectedCityId && styles.selectorDisabled]}
-                        onPress={() => selectedCityId && setIsDistrictDropdownOpen(true)}
-                        disabled={!selectedCityId}
-                    >
-                        <Text style={[styles.selectorText, !selectedDistrictId && styles.selectorPlaceholder]}>
-                            {selectedDistrictId
-                                ? districts.find(d => d.id === selectedDistrictId)?.name ?? 'Выберите район'
-                                : selectedCityId ? 'Выберите район' : 'Сначала выберите город'}
-                        </Text>
-                        <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
-                    </TouchableOpacity>
-                )}
+                <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+                    {/* Customer info */}
+                    <Text style={styles.sectionTitle}>Информация о клиенте</Text>
 
-                <Input
-                    label="Адрес"
-                    value={address}
-                    onChangeText={setAddress}
-                    placeholder="Введите адрес"
-                />
-
-                {/* Notes Button */}
-                <TouchableOpacity style={styles.noteButton} onPress={() => setIsNoteModalVisible(true)}>
-                    <Ionicons name="document-text-outline" size={20} color={Colors.primary} />
-                    <Text style={styles.noteButtonText}>
-                        Заметки к заказу {notes.length > 0 ? `(${notes.length})` : ''}
-                    </Text>
-                    <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} style={{ marginLeft: 'auto' }} />
-                </TouchableOpacity>
-
-                <View style={styles.divider} />
-
-                {/* Products */}
-                <Text style={styles.sectionTitle}>Товары</Text>
-
-                {loadingServices ? (
-                    <View style={styles.loadingServices}>
-                        <ActivityIndicator size="small" color={Colors.primary} />
-                        <Text style={styles.loadingText}>Загрузка услуг...</Text>
-                    </View>
-                ) : (
-                    <>
-                        {products.map((product, index) => (
-                            <View key={product.id} style={styles.productItem}>
-                                <View style={styles.productHeaderRow}>
-                                    <Text style={styles.productLabel}>Товар {index + 1}:</Text>
-                                    {products.length > 1 && (
-                                        <TouchableOpacity onPress={() => removeProduct(product.id)}>
-                                            <Ionicons name="trash-outline" size={18} color={Colors.error} />
-                                        </TouchableOpacity>
-                                    )}
-                                </View>
+                    <Input
+                        label="Телефон"
+                        value={phone}
+                        onChangeText={setPhone}
+                        placeholder="+993 __ __-__-__-__"
+                    />
+                    {/* Client search suggestions */}
+                    {searchingClient && (
+                        <ActivityIndicator size="small" color={Colors.primary} style={{ marginBottom: 6 }} />
+                    )}
+                    {clientSuggestions.length > 0 && (
+                        <View style={styles.suggestionsBox}>
+                            {clientSuggestions.map((c) => (
                                 <TouchableOpacity
-                                    style={styles.productDropdown}
-                                    onPress={() => setActiveProductDropdown(product.id)}
+                                    key={c.id}
+                                    style={styles.suggestionRow}
+                                    onPress={() => handleSelectClient(c)}
                                 >
-                                    <Text style={[styles.productName, !product.name && styles.productNamePlaceholder]}>
-                                        {product.name || 'Выберите услугу'}
-                                    </Text>
-                                    <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
+                                    <Text style={styles.suggestionName}>{c.full_name}</Text>
+                                    <Text style={styles.suggestionPhone}>{c.phone}</Text>
                                 </TouchableOpacity>
-                                <QuantitySelector
-                                    label="Количество:"
-                                    value={product.quantity}
-                                    onChange={(qty) => updateQuantity(product.id, qty)}
-                                />
-                            </View>
-                        ))}
+                            ))}
+                        </View>
+                    )}
+                    <Input
+                        label="Имя клиента"
+                        value={customerName}
+                        onChangeText={setCustomerName}
+                        placeholder="Введите имя"
+                    />
 
-                        <TouchableOpacity style={styles.addProductButton} onPress={addProduct}>
-                            <Ionicons name="add" size={18} color={Colors.success} />
-                            <Text style={styles.addProductText}>Добавить товар</Text>
+                    {/* City Selector */}
+                    <Text style={styles.fieldLabel}>Город</Text>
+                    {loadingCities ? (
+                        <ActivityIndicator size="small" color={Colors.primary} style={{ marginBottom: 12 }} />
+                    ) : (
+                        <TouchableOpacity
+                            style={styles.selectorButton}
+                            onPress={() => setIsCityDropdownOpen(true)}
+                        >
+                            <Text style={[styles.selectorText, !selectedCityId && styles.selectorPlaceholder]}>
+                                {selectedCityId
+                                    ? cities.find(c => c.id === selectedCityId)?.name ?? 'Выберите город'
+                                    : 'Выберите город'}
+                            </Text>
+                            <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
                         </TouchableOpacity>
-                    </>
-                )}
+                    )}
 
-                <View style={styles.divider} />
+                    {/* District Selector */}
+                    <Text style={styles.fieldLabel}>Район</Text>
+                    {loadingDistricts ? (
+                        <ActivityIndicator size="small" color={Colors.primary} style={{ marginBottom: 12 }} />
+                    ) : (
+                        <TouchableOpacity
+                            style={[styles.selectorButton, !selectedCityId && styles.selectorDisabled]}
+                            onPress={() => selectedCityId && setIsDistrictDropdownOpen(true)}
+                            disabled={!selectedCityId}
+                        >
+                            <Text style={[styles.selectorText, !selectedDistrictId && styles.selectorPlaceholder]}>
+                                {selectedDistrictId
+                                    ? districts.find(d => d.id === selectedDistrictId)?.name ?? 'Выберите район'
+                                    : selectedCityId ? 'Выберите район' : 'Сначала выберите город'}
+                            </Text>
+                            <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
+                        </TouchableOpacity>
+                    )}
 
-                {/* Empty bottles */}
-                <Text style={styles.sectionTitle}>Пустые тары</Text>
-                <View style={styles.productItem}>
-                    <View style={styles.taryRow}>
-                        <Text style={styles.productLabel}>Забрано:</Text>
-                        <QuantitySelector
-                            label=""
-                            value={emptyBottles}
-                            onChange={setEmptyBottles}
-                        />
-                    </View>
-                </View>
-
-                <View style={styles.divider} />
-
-                {/* Payment */}
-                <Text style={styles.sectionTitle}>Оплата</Text>
-
-                <TouchableOpacity
-                    style={styles.paymentRow}
-                    onPress={() => setIsCashChecked(!isCashChecked)}
-                    activeOpacity={0.8}
-                >
-                    <Ionicons
-                        name={isCashChecked ? "checkbox" : "square-outline"}
-                        size={22}
-                        color={isCashChecked ? Colors.primary : Colors.border}
+                    <Input
+                        label="Адрес"
+                        value={address}
+                        onChangeText={setAddress}
+                        placeholder="Введите адрес"
                     />
-                    <Text style={styles.paymentLabel}>Наличные:</Text>
-                    <View style={styles.paymentInputWrapper}>
-                        <TextInput
-                            style={[styles.paymentInput, !isCashChecked && styles.paymentInputDisabled]}
-                            value={paymentCashStr}
-                            onChangeText={handleCashChange}
-                            keyboardType="numeric"
-                            editable={isCashChecked}
-                        />
-                        <Text style={styles.paymentCurrency}>TMT</Text>
-                    </View>
-                </TouchableOpacity>
 
-                <TouchableOpacity
-                    style={styles.paymentRow}
-                    onPress={() => setIsCardChecked(!isCardChecked)}
-                    activeOpacity={0.8}
-                >
-                    <Ionicons
-                        name={isCardChecked ? "checkbox" : "square-outline"}
-                        size={22}
-                        color={isCardChecked ? Colors.primary : Colors.border}
+                    {/* Notes Button */}
+                    <TouchableOpacity style={styles.noteButton} onPress={() => setIsNoteModalVisible(true)}>
+                        <Ionicons name="document-text-outline" size={20} color={Colors.primary} />
+                        <Text style={styles.noteButtonText}>
+                            Заметки к заказу {notes.length > 0 ? `(${notes.length})` : ''}
+                        </Text>
+                        <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} style={{ marginLeft: 'auto' }} />
+                    </TouchableOpacity>
+
+                    <View style={styles.divider} />
+
+                    {/* Products */}
+                    <Text style={styles.sectionTitle}>Товары</Text>
+
+                    {loadingServices ? (
+                        <View style={styles.loadingServices}>
+                            <ActivityIndicator size="small" color={Colors.primary} />
+                            <Text style={styles.loadingText}>Загрузка услуг...</Text>
+                        </View>
+                    ) : (
+                        <>
+                            {products.map((product, index) => (
+                                <View key={product.id} style={styles.productItem}>
+                                    <View style={styles.productHeaderRow}>
+                                        <Text style={styles.productLabel}>Товар {index + 1}:</Text>
+                                        {products.length > 1 && (
+                                            <TouchableOpacity onPress={() => removeProduct(product.id)}>
+                                                <Ionicons name="trash-outline" size={18} color={Colors.error} />
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
+                                    <TouchableOpacity
+                                        style={styles.productDropdown}
+                                        onPress={() => setActiveProductDropdown(product.id)}
+                                    >
+                                        <Text style={[styles.productName, !product.name && styles.productNamePlaceholder]}>
+                                            {product.name || 'Выберите услугу'}
+                                        </Text>
+                                        <Ionicons name="chevron-down" size={16} color={Colors.textSecondary} />
+                                    </TouchableOpacity>
+                                    <QuantitySelector
+                                        label="Количество:"
+                                        value={product.quantity}
+                                        onChange={(qty) => updateQuantity(product.id, qty)}
+                                    />
+                                </View>
+                            ))}
+
+                            <TouchableOpacity style={styles.addProductButton} onPress={addProduct}>
+                                <Ionicons name="add" size={18} color={Colors.success} />
+                                <Text style={styles.addProductText}>Добавить товар</Text>
+                            </TouchableOpacity>
+                        </>
+                    )}
+
+                    <View style={styles.divider} />
+
+                    {/* Empty bottles */}
+                    <Text style={styles.sectionTitle}>Пустые тары</Text>
+                    <View style={styles.productItem}>
+                        <View style={styles.taryRow}>
+                            <Text style={styles.productLabel}>Забрано:</Text>
+                            <QuantitySelector
+                                label=""
+                                value={emptyBottles}
+                                onChange={setEmptyBottles}
+                            />
+                        </View>
+                    </View>
+
+                    <View style={styles.divider} />
+
+                    {/* Payment */}
+                    <Text style={styles.sectionTitle}>Оплата</Text>
+
+                    <TouchableOpacity
+                        style={styles.paymentRow}
+                        onPress={() => setIsCashChecked(!isCashChecked)}
+                        activeOpacity={0.8}
+                    >
+                        <Ionicons
+                            name={isCashChecked ? "checkbox" : "square-outline"}
+                            size={22}
+                            color={isCashChecked ? Colors.primary : Colors.border}
+                        />
+                        <Text style={styles.paymentLabel}>Наличные:</Text>
+                        <View style={styles.paymentInputWrapper}>
+                            <TextInput
+                                style={[styles.paymentInput, !isCashChecked && styles.paymentInputDisabled]}
+                                value={paymentCashStr}
+                                onChangeText={handleCashChange}
+                                keyboardType="numeric"
+                                editable={isCashChecked}
+                            />
+                            <Text style={styles.paymentCurrency}>TMT</Text>
+                        </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={styles.paymentRow}
+                        onPress={() => setIsCardChecked(!isCardChecked)}
+                        activeOpacity={0.8}
+                    >
+                        <Ionicons
+                            name={isCardChecked ? "checkbox" : "square-outline"}
+                            size={22}
+                            color={isCardChecked ? Colors.primary : Colors.border}
+                        />
+                        <Text style={styles.paymentLabel}>Карта:</Text>
+                        <View style={styles.paymentInputWrapper}>
+                            <TextInput
+                                style={[styles.paymentInput, !isCardChecked && styles.paymentInputDisabled]}
+                                value={paymentCardStr}
+                                onChangeText={handleCardChange}
+                                keyboardType="numeric"
+                                editable={isCardChecked}
+                            />
+                            <Text style={styles.paymentCurrency}>TMT</Text>
+                        </View>
+                    </TouchableOpacity>
+
+                    <View style={styles.divider} />
+
+                    {/* Total */}
+                    <View style={styles.totalRow}>
+                        <Text style={styles.totalText}>Итого:</Text>
+                        <Text style={styles.totalAmount}>{total} TMT</Text>
+                    </View>
+
+                    <View style={{ height: 100 }} />
+                </ScrollView>
+
+                {/* Bottom bar */}
+                <View style={styles.bottomBar}>
+                    <Button
+                        title="Сохранить"
+                        onPress={handleSave}
+                        variant="primary"
+                        size="large"
                     />
-                    <Text style={styles.paymentLabel}>Карта:</Text>
-                    <View style={styles.paymentInputWrapper}>
-                        <TextInput
-                            style={[styles.paymentInput, !isCardChecked && styles.paymentInputDisabled]}
-                            value={paymentCardStr}
-                            onChangeText={handleCardChange}
-                            keyboardType="numeric"
-                            editable={isCardChecked}
-                        />
-                        <Text style={styles.paymentCurrency}>TMT</Text>
-                    </View>
-                </TouchableOpacity>
-
-                <View style={styles.divider} />
-
-                {/* Total */}
-                <View style={styles.totalRow}>
-                    <Text style={styles.totalText}>Итого:</Text>
-                    <Text style={styles.totalAmount}>{total} TMT</Text>
                 </View>
-
-                <View style={{ height: 100 }} />
-            </ScrollView>
-
-            {/* Bottom bar */}
-            <View style={styles.bottomBar}>
-                <Button
-                    title="Сохранить"
-                    onPress={handleSave}
-                    variant="primary"
-                    size="large"
-                />
-            </View>
+            </KeyboardAvoidingView>
 
             {/* Note Modal */}
             <NoteModal

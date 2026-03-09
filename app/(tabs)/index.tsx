@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,7 +27,15 @@ export default function OrdersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<CourierOrder[]>([]);
+  const [activeTab, setActiveTab] = useState<string>('waiting');
   const insets = useSafeAreaInsets();
+
+  const TABS = [
+    { label: 'В ожидании', value: 'waiting' },
+    { label: 'В пути', value: 'in_transit' },
+    { label: 'Доставлено', value: 'delivered' },
+    { label: 'Отменено', value: 'cancelled' },
+  ];
 
   const loadOrders = useCallback(async () => {
     try {
@@ -55,6 +64,14 @@ export default function OrdersScreen() {
   const completedOrders = orders.filter(o => o.status === 'delivered').length;
   const totalOrders = orders.length;
   const totalEmptyBottles = orders.reduce((sum, o) => sum + (o.empty_bottles_collected ?? 0), 0);
+
+  const filteredOrders = orders.filter(o => {
+    if (activeTab === 'waiting') return o.status === 'waiting';
+    if (activeTab === 'in_transit') return o.status === 'in_transit';
+    if (activeTab === 'delivered') return o.status === 'delivered';
+    if (activeTab === 'cancelled') return o.status === 'cancelled';
+    return true;
+  });
 
   return (
     <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
@@ -103,11 +120,42 @@ export default function OrdersScreen() {
           />
         </View>
 
+        {/* Tabs */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsContainer} contentContainerStyle={styles.tabsContent}>
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab.value;
+            const count = orders.filter(o => {
+              if (tab.value === 'waiting') return o.status === 'waiting';
+              if (tab.value === 'in_transit') return o.status === 'in_transit';
+              if (tab.value === 'delivered') return o.status === 'delivered';
+              if (tab.value === 'cancelled') return o.status === 'cancelled';
+              return false;
+            }).length;
+
+            return (
+              <TouchableOpacity
+                key={tab.value}
+                style={[styles.tabButton, isActive && styles.tabButtonActive]}
+                onPress={() => setActiveTab(tab.value)}
+              >
+                <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+                  {tab.label}
+                </Text>
+                <View style={[styles.tabBadge, isActive && styles.tabBadgeActive]}>
+                  <Text style={[styles.tabBadgeText, isActive && styles.tabBadgeTextActive]}>
+                    {count}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
         {/* Order list */}
         {loading ? (
           <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 32 }} />
-        ) : orders.length > 0 ? (
-          orders.map((order) => (
+        ) : filteredOrders.length > 0 ? (
+          filteredOrders.map((order) => (
             <OrderCard key={String(order.id)} order={order} />
           ))
         ) : (
@@ -155,5 +203,52 @@ const styles = StyleSheet.create({
   },
   addOrderContainer: {
     marginBottom: 16,
+  },
+  tabsContainer: {
+    marginBottom: 16,
+  },
+  tabsContent: {
+    gap: 12,
+    paddingRight: 16, // to ensure last item has space
+  },
+  tabButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  tabButtonActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  tabText: {
+    ...Typography.bodyS,
+    color: Colors.textSecondary,
+    marginRight: 6,
+    fontWeight: '500',
+  },
+  tabTextActive: {
+    color: Colors.textWhite,
+  },
+  tabBadge: {
+    backgroundColor: Colors.background,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  tabBadgeActive: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  tabBadgeText: {
+    ...Typography.micro,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  tabBadgeTextActive: {
+    color: Colors.textWhite,
   },
 });
