@@ -31,8 +31,8 @@ export default function OrdersScreen() {
   const insets = useSafeAreaInsets();
 
   const TABS = [
-    { label: 'В ожидании', value: 'waiting' },
-    { label: 'В пути', value: 'in_transit' },
+    { label: 'В ожидании', value: 'pending' },
+    { label: 'В пути', value: 'in_progress' },
     { label: 'Доставлено', value: 'delivered' },
     { label: 'Отменено', value: 'cancelled' },
   ];
@@ -66,8 +66,8 @@ export default function OrdersScreen() {
   const totalEmptyBottles = orders.reduce((sum, o) => sum + (o.empty_bottles_collected ?? 0), 0);
 
   const filteredOrders = orders.filter(o => {
-    if (activeTab === 'waiting') return o.status === 'waiting';
-    if (activeTab === 'in_transit') return o.status === 'in_transit';
+    if (activeTab === 'pending') return o.status === 'pending';
+    if (activeTab === 'in_progress') return o.status === 'in_progress';
     if (activeTab === 'delivered') return o.status === 'delivered';
     if (activeTab === 'cancelled') return o.status === 'cancelled';
     return true;
@@ -125,8 +125,8 @@ export default function OrdersScreen() {
           {TABS.map((tab) => {
             const isActive = activeTab === tab.value;
             const count = orders.filter(o => {
-              if (tab.value === 'waiting') return o.status === 'waiting';
-              if (tab.value === 'in_transit') return o.status === 'in_transit';
+              if (tab.value === 'pending') return o.status === 'pending';
+              if (tab.value === 'in_progress') return o.status === 'in_progress';
               if (tab.value === 'delivered') return o.status === 'delivered';
               if (tab.value === 'cancelled') return o.status === 'cancelled';
               return false;

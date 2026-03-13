@@ -25,7 +25,7 @@ export interface CourierOrder {
     payment_card: number;
     payment_credit: number;
     total: number;
-    status: 'waiting' | 'in_transit' | 'delivered' | 'cancelled';
+    status: 'pending' | 'in_progress' | 'delivered' | 'cancelled';
     note: string | null;
     items: CourierOrderItem[];
 }
@@ -56,6 +56,14 @@ export function todayStr(): string {
 }
 
 const courierOrdersService = {
+    /** GET /api/courier/orders/summary — сводка (total/completed) на сегодня */
+    getSummary: (): Promise<{ date: string; total_orders: number; completed_orders: number }> =>
+        api.get('/courier/orders/summary'),
+
+    /** GET /api/courier/inventory — тара курьера (current_tare, issued_today) */
+    getInventory: (): Promise<{ date: string; current_tare: number; issued_today: number }> =>
+        api.get('/courier/inventory'),
+
     /** GET /api/courier/orders?date=YYYY-MM-DD */
     getByDate: (date: string): Promise<CourierOrder[]> =>
         api.get<CourierOrder[]>(`/courier/orders?date=${date}`),
@@ -68,13 +76,35 @@ const courierOrdersService = {
     create: (payload: CreateOrderPayload): Promise<CourierOrder> =>
         api.post<CourierOrder>('/courier/orders', payload),
 
-    /** PATCH /api/courier/orders/:id/status */
-    updateStatus: (id: number, status: string): Promise<CourierOrder> =>
-        api.patch<CourierOrder>(`/courier/orders/${id}/status`, { status }),
+    /** PUT /api/courier/orders/:id/status — бэк ожидает PUT, не PATCH */
+    updateStatus: (id: number, status: string): Promise<{ message: string; order_id: number; old_status: string; new_status: string }> =>
+        api.put(`/courier/orders/${id}/status`, { status }),
 
-    /** POST /api/courier/orders/:id/notes */
-    addNote: (id: number, text: string): Promise<{ message: string }> =>
-        api.post<{ message: string }>(`/courier/orders/${id}/notes`, { text }),
+    /** POST /api/courier/orders/:id/notes — поле должно быть 'note', не 'text' */
+    addNote: (id: number, note: string): Promise<{ message: string; order_id: number; note: string }> =>
+        api.post(`/courier/orders/${id}/notes`, { note }),
+
+    /** GET /api/courier/orders/:id/notes */
+    getNotes: (id: number): Promise<{ order_id: number; notes: string }> =>
+        api.get(`/courier/orders/${id}/notes`),
+
+    /** POST /api/courier/orders/:id/deliver */
+    deliverOrder: (id: number, payload: { payment_type?: string; cash_amount?: number; card_amount?: number }): Promise<any> =>
+        api.post(`/courier/orders/${id}/deliver`, payload),
+
+    /** GET /api/courier/payments/daily */
+    getDailyPayments: (date?: string): Promise<any> => {
+        const params: Record<string, string> = {};
+        if (date) params.date = date;
+        return api.get('/courier/payments/daily', Object.keys(params).length > 0 ? params : undefined);
+    },
+
+    /** GET /api/courier/payments/summary */
+    getPaymentsSummary: (date?: string): Promise<any> => {
+        const params: Record<string, string> = {};
+        if (date) params.date = date;
+        return api.get('/courier/payments/summary', Object.keys(params).length > 0 ? params : undefined);
+    },
 };
 
 export default courierOrdersService;

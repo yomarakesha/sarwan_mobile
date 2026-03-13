@@ -19,9 +19,11 @@ export interface PaginatedTransactions {
 }
 
 export const warehouseTransactionsService = {
-    /** GET /warehouse/transaction-types */
+    /** GET /admin/transaction-types
+     * We use /admin/transaction-types until warehouse-specific endpoint is available.
+     */
     getTypes: () =>
-        api.get<Record<string, { code: string; labels: Record<string, string> }>>('/warehouse/transaction-types'),
+        api.get<Record<string, { code: string; labels: Record<string, string> }>>('/admin/transaction-types'),
 
     /**
      * GET /warehouse/transactions

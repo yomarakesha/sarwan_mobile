@@ -10,6 +10,9 @@ export const warehouseLocationsService = {
 
     /** GET /warehouse/locations/couriers */
     getCouriers: () => api.get<Location[]>('/warehouse/locations/couriers'),
+
+    /** GET /warehouse/locations/clients */
+    getClients: () => api.get<Location[]>('/warehouse/locations/clients'),
 };
 
 export default warehouseLocationsService;
